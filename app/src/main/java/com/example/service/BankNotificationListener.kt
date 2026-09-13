@@ -20,6 +20,12 @@ class BankNotificationListener : NotificationListenerService() {
         if (sbn == null) return
 
         val packageName = sbn.packageName ?: return
+        
+        // CRITICAL: Prevent infinite loops by ignoring our own notifications
+        if (packageName == applicationContext.packageName) {
+            return
+        }
+
         val extras = sbn.notification.extras ?: return
 
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()

@@ -910,7 +910,7 @@ fun ZenPeriodComparisonCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(
                         text = "Сравнение периодов",
                         style = MaterialTheme.typography.titleMedium,

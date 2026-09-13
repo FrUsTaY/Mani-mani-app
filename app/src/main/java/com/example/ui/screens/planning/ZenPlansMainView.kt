@@ -651,21 +651,7 @@ fun ZenPlansMainView(
             }
         }
 
-        FloatingActionButton(
-            onClick = { showAddCategoryPlanDialog = true },
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            shape = CircleShape,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 80.dp)
-                .testTag("zen_plans_fab")
-        ) {
-            Icon(
-                imageVector = Icons.Default.Edit,
-                contentDescription = "Добавить или изменить план"
-            )
-        }
+        // Floating Action Button (Edit) removed to avoid redundant UX
     }
 
     // Modal: "Планы в Дзене" (matching Screenshot 1)
