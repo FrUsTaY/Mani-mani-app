@@ -1,0 +1,128 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 1. Outer Target Reticle Rings (Safe zone: centered around 54, 54) -->
+    <!-- Primary Red Target Ring (Radius 27dp, bounds 27..81) -->
+    <path
+        android:strokeColor="#E11D48"
+        android:strokeWidth="3"
+        android:pathData="M54,27 A27,27 0 1,0 54,81 A27,27 0 1,0 54,27" />
+
+    <!-- Secondary Concentric Target Ring -->
+    <path
+        android:strokeColor="#FDA4AF"
+        android:strokeAlpha="0.5"
+        android:strokeWidth="1.5"
+        android:pathData="M54,37 A17,17 0 1,0 54,71 A17,17 0 1,0 54,37" />
+
+    <!-- 2. Tactical Corner Target Brackets -->
+    <!-- Top-Left Bracket -->
+    <path
+        android:strokeColor="#F43F5E"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M33,41 L33,33 L41,33" />
+    <!-- Top-Right Bracket -->
+    <path
+        android:strokeColor="#F43F5E"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M75,41 L75,33 L67,33" />
+    <!-- Bottom-Left Bracket -->
+    <path
+        android:strokeColor="#F43F5E"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M33,67 L33,75 L41,75" />
+    <!-- Bottom-Right Bracket -->
+    <path
+        android:strokeColor="#F43F5E"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M75,67 L75,75 L67,75" />
+
+    <!-- 3. Crosshair Sight Needle Ticks -->
+    <!-- Top Tick -->
+    <path
+        android:strokeColor="#FFE4E6"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,20 L54,31" />
+    <!-- Bottom Tick -->
+    <path
+        android:strokeColor="#FFE4E6"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,77 L54,88" />
+    <!-- Left Tick -->
+    <path
+        android:strokeColor="#FFE4E6"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M20,54 L31,54" />
+    <!-- Right Tick -->
+    <path
+        android:strokeColor="#FFE4E6"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M77,54 L88,54" />
+
+    <!-- Inner Reticle Dot Markers -->
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M54,39 A1.5,1.5 0 1,0 54,42 A1.5,1.5 0 1,0 54,39" />
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M54,66 A1.5,1.5 0 1,0 54,69 A1.5,1.5 0 1,0 54,66" />
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M39,54 A1.5,1.5 0 1,0 42,54 A1.5,1.5 0 1,0 39,54" />
+    <path
+        android:fillColor="#F43F5E"
+        android:pathData="M66,54 A1.5,1.5 0 1,0 69,54 A1.5,1.5 0 1,0 66,54" />
+
+    <!-- 4. Central Target Bullseye: Gold Coin Currency Target -->
+    <!-- Coin Outer Rim Shadow -->
+    <path
+        android:fillColor="#B45309"
+        android:pathData="M54,43 A11,11 0 1,0 54,65 A11,11 0 1,0 54,43" />
+    <!-- Coin Outer Rim Gold -->
+    <path
+        android:fillColor="#D97706"
+        android:pathData="M54,43.5 A10.5,10.5 0 1,0 54,64.5 A10.5,10.5 0 1,0 54,43.5" />
+    <!-- Coin Face Shiny Gold -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M54,45 A9,9 0 1,0 54,63 A9,9 0 1,0 54,45" />
+    <!-- Coin Groove Line -->
+    <path
+        android:strokeColor="#F59E0B"
+        android:strokeWidth="1"
+        android:pathData="M54,46.5 A7.5,7.5 0 1,0 54,61.5 A7.5,7.5 0 1,0 54,46.5" />
+
+    <!-- 5. Stylized Ruble Currency Sign in the Center (₽) -->
+    <!-- Vertical Spine -->
+    <path
+        android:fillColor="#78350F"
+        android:pathData="M51.5,48.5 L53.5,48.5 L53.5,59.5 L51.5,59.5 Z" />
+    <!-- Upper Loop -->
+    <path
+        android:fillColor="#78350F"
+        android:pathData="M53.5,48.5 L56,48.5 C57.4,48.5 58.5,49.6 58.5,51 C58.5,52.4 57.4,53.5 56,53.5 L53.5,53.5 Z M53.5,50 L53.5,52 L55.8,52 C56.4,52 56.8,51.6 56.8,51 C56.8,50.4 56.4,50 55.8,50 Z" />
+    <!-- Crossbar 1 -->
+    <path
+        android:fillColor="#78350F"
+        android:pathData="M49.5,53.5 L56.5,53.5 L56.5,55 L49.5,55 Z" />
+    <!-- Crossbar 2 -->
+    <path
+        android:fillColor="#78350F"
+        android:pathData="M49.5,56 L55,56 L55,57.5 L49.5,57.5 Z" />
+
+</vector>
