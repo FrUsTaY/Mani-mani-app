@@ -55,7 +55,7 @@ interface CategoryDao {
     suspend fun insertCategory(category: CategoryEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCategories(categories: List<CategoryEntity>)
+    suspend fun insertCategories(categories: List<CategoryEntity>): List<Long>
 
     @Update
     suspend fun updateCategory(category: CategoryEntity)

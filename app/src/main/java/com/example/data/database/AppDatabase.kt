@@ -107,8 +107,8 @@ abstract class AppDatabase : RoomDatabase() {
                 CategoryEntity(name = "Другое (доход)", type = "INCOME", iconName = "more_horiz", colorHex = "#64748B", orderIndex = 7)
             )
 
-            categoryDao.insertCategories(expenseCategories)
-            categoryDao.insertCategories(incomeCategories)
+            val expenseIds = categoryDao.insertCategories(expenseCategories)
+            val incomeIds = categoryDao.insertCategories(incomeCategories)
 
             // Predefined accounts matching user's multi-bank workflow:
             // 1. VTB Salary
@@ -199,7 +199,7 @@ abstract class AppDatabase : RoomDatabase() {
                     type = "INCOME",
                     amount = 95000.0,
                     accountId = vtbSalaryId,
-                    categoryId = 12, // Зарплата
+                    categoryId = incomeIds[0], // Зарплата
                     timestamp = now - 2 * oneDay,
                     note = "Зарплата на ВТБ за предыдущий месяц",
                     tag = "работа,втб"
@@ -212,7 +212,7 @@ abstract class AppDatabase : RoomDatabase() {
                     type = "INCOME",
                     amount = 65000.0,
                     accountId = tbankId,
-                    categoryId = 13, // Зарплата жены
+                    categoryId = incomeIds[1], // Зарплата жены
                     timestamp = now - 2 * oneDay + 3600000L,
                     note = "Внесение наличными ЗП жены через банкомат",
                     tag = "жена,наличные,тбанк"
@@ -277,7 +277,7 @@ abstract class AppDatabase : RoomDatabase() {
                     type = "EXPENSE",
                     amount = 2150.0,
                     accountId = alfaId,
-                    categoryId = 1, // Продукты
+                    categoryId = expenseIds[0], // Продукты
                     timestamp = now - 18 * 3600000L,
                     note = "Пятёрочка у дома (Апельсиновая карта)",
                     tag = "пятёрочка,еда"
@@ -290,7 +290,7 @@ abstract class AppDatabase : RoomDatabase() {
                     type = "EXPENSE",
                     amount = 3450.0,
                     accountId = vtbGroceriesId,
-                    categoryId = 1, // Продукты
+                    categoryId = expenseIds[0], // Продукты
                     timestamp = now - 12 * 3600000L,
                     note = "Супермаркет Перекрёсток",
                     tag = "продукты,дом"
@@ -303,7 +303,7 @@ abstract class AppDatabase : RoomDatabase() {
                     type = "EXPENSE",
                     amount = 4600.0,
                     accountId = vtbSalaryId,
-                    categoryId = 5, // Покупки и одежда
+                    categoryId = expenseIds[4], // Покупки и одежда
                     timestamp = now - 5 * 3600000L,
                     note = "Осенняя куртка и обувь",
                     tag = "одежда,покупки"
@@ -313,21 +313,21 @@ abstract class AppDatabase : RoomDatabase() {
             // Initial monthly budgets
             budgetDao.insertBudget(
                 BudgetEntity(
-                    categoryId = 1, // Продукты
+                    categoryId = expenseIds[0], // Продукты
                     limitAmount = 35000.0,
                     periodMonth = "DEFAULT"
                 )
             )
             budgetDao.insertBudget(
                 BudgetEntity(
-                    categoryId = 2, // Кафе
+                    categoryId = expenseIds[1], // Кафе
                     limitAmount = 15000.0,
                     periodMonth = "DEFAULT"
                 )
             )
             budgetDao.insertBudget(
                 BudgetEntity(
-                    categoryId = 3, // Транспорт
+                    categoryId = expenseIds[2], // Транспорт
                     limitAmount = 10000.0,
                     periodMonth = "DEFAULT"
                 )
