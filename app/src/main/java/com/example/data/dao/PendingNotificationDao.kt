@@ -12,6 +12,9 @@ interface PendingNotificationDao {
     @Query("SELECT * FROM pending_notifications ORDER BY timestamp DESC LIMIT 50")
     fun getAllRecentNotifications(): Flow<List<PendingNotificationEntity>>
 
+    @Query("SELECT * FROM pending_notifications WHERE rawText = :rawText AND timestamp > :sinceTime LIMIT 1")
+    suspend fun findRecentDuplicateByText(rawText: String, sinceTime: Long): PendingNotificationEntity?
+    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotification(notification: PendingNotificationEntity): Long
 

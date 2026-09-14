@@ -154,9 +154,20 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _userApiKey = MutableStateFlow(geminiPrefs.getUserApiKey())
     private val _isAiConfigured = MutableStateFlow(geminiPrefs.isApiKeyConfigured())
 
+    private val _isEveningSummaryEnabled = MutableStateFlow(userFinancePrefs.isEveningSummaryEnabled())
+    val isEveningSummaryEnabledFlow: StateFlow<Boolean> = _isEveningSummaryEnabled.asStateFlow()
+
+    private val _eveningSummaryTime = MutableStateFlow(userFinancePrefs.getEveningSummaryTime())
+    val eveningSummaryTimeFlow: StateFlow<String> = _eveningSummaryTime.asStateFlow()
+
     init {
         val database = AppDatabase.getDatabase(application, viewModelScope)
         repository = FinanceRepository(database)
+        
+        // Restore evening summary schedule if enabled
+        if (_isEveningSummaryEnabled.value) {
+            com.example.service.EveningSummaryScheduler.schedule(getApplication(), _eveningSummaryTime.value)
+        }
     }
 
     private val baseFinanceFlow = combine10(
@@ -372,11 +383,6 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             _statusMessage.value = "Операция успешно обновлена"
         }
     }
-    private val _isEveningSummaryEnabled = MutableStateFlow(userFinancePrefs.isEveningSummaryEnabled())
-    val isEveningSummaryEnabledFlow: StateFlow<Boolean> = _isEveningSummaryEnabled.asStateFlow()
-
-    private val _eveningSummaryTime = MutableStateFlow(userFinancePrefs.getEveningSummaryTime())
-    val eveningSummaryTimeFlow: StateFlow<String> = _eveningSummaryTime.asStateFlow()
 
     fun isEveningSummaryEnabled(): Boolean {
         return _isEveningSummaryEnabled.value
@@ -385,6 +391,11 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun setEveningSummaryEnabled(enabled: Boolean) {
         userFinancePrefs.setEveningSummaryEnabled(enabled)
         _isEveningSummaryEnabled.value = enabled
+        if (enabled) {
+            com.example.service.EveningSummaryScheduler.schedule(getApplication(), _eveningSummaryTime.value)
+        } else {
+            com.example.service.EveningSummaryScheduler.cancel(getApplication())
+        }
     }
 
     fun getEveningSummaryTime(): String {
@@ -394,6 +405,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun setEveningSummaryTime(time: String) {
         userFinancePrefs.setEveningSummaryTime(time)
         _eveningSummaryTime.value = time
+        if (_isEveningSummaryEnabled.value) {
+            com.example.service.EveningSummaryScheduler.schedule(getApplication(), time)
+        }
     }
 
     fun setPushNotificationsEnabled(enabled: Boolean) {

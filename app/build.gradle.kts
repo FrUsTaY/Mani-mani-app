@@ -138,3 +138,6 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.8.1")
+}

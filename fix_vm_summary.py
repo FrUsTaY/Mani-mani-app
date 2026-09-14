@@ -3,18 +3,7 @@ with open('app/src/main/java/com/example/ui/viewmodel/FinanceViewModel.kt', 'r')
 
 import re
 
-# replace isEveningSummaryEnabled / setEveningSummaryEnabled
-new_methods = """    private val _isEveningSummaryEnabled = MutableStateFlow(userFinancePrefs.isEveningSummaryEnabled())
-    val isEveningSummaryEnabledFlow: StateFlow<Boolean> = _isEveningSummaryEnabled.asStateFlow()
-
-    private val _eveningSummaryTime = MutableStateFlow(userFinancePrefs.getEveningSummaryTime())
-    val eveningSummaryTimeFlow: StateFlow<String> = _eveningSummaryTime.asStateFlow()
-
-    fun isEveningSummaryEnabled(): Boolean {
-        return _isEveningSummaryEnabled.value
-    }
-
-    fun setEveningSummaryEnabled(enabled: Boolean) {
+old_logic = """    fun setEveningSummaryEnabled(enabled: Boolean) {
         userFinancePrefs.setEveningSummaryEnabled(enabled)
         _isEveningSummaryEnabled.value = enabled
     }
@@ -28,8 +17,29 @@ new_methods = """    private val _isEveningSummaryEnabled = MutableStateFlow(use
         _eveningSummaryTime.value = time
     }"""
 
-pattern = r'\s*fun isEveningSummaryEnabled\(\): Boolean \{.*?\n\s*\}\s*fun setEveningSummaryEnabled\(enabled: Boolean\) \{.*?\n\s*\}\s*fun getEveningSummaryTime\(\): String \{.*?\n\s*\}\s*fun setEveningSummaryTime\(time: String\) \{.*?\n\s*\}'
-content = re.sub(pattern, "\n" + new_methods, content, flags=re.DOTALL)
+new_logic = """    fun setEveningSummaryEnabled(enabled: Boolean) {
+        userFinancePrefs.setEveningSummaryEnabled(enabled)
+        _isEveningSummaryEnabled.value = enabled
+        if (enabled) {
+            com.example.service.EveningSummaryScheduler.schedule(application, _eveningSummaryTime.value)
+        } else {
+            com.example.service.EveningSummaryScheduler.cancel(application)
+        }
+    }
+
+    fun getEveningSummaryTime(): String {
+        return _eveningSummaryTime.value
+    }
+
+    fun setEveningSummaryTime(time: String) {
+        userFinancePrefs.setEveningSummaryTime(time)
+        _eveningSummaryTime.value = time
+        if (_isEveningSummaryEnabled.value) {
+            com.example.service.EveningSummaryScheduler.schedule(application, time)
+        }
+    }"""
+
+content = content.replace(old_logic, new_logic)
 
 with open('app/src/main/java/com/example/ui/viewmodel/FinanceViewModel.kt', 'w') as f:
     f.write(content)

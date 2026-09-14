@@ -21,8 +21,20 @@ class BankNotificationListener : NotificationListenerService() {
 
         val packageName = sbn.packageName ?: return
         
-        // CRITICAL: Prevent infinite loops by ignoring our own notifications
         if (packageName == applicationContext.packageName) {
+            return
+        }
+
+        // CRITICAL: Ignore other personal finance apps to avoid double counting (they also intercept bank pushes)
+        val ignoredPackages = listOf(
+            "ru.zenmoney.android",
+            "com.coinkeeper.android",
+            "com.monefy.app.lite",
+            "com.monefy.app.pro",
+            "com.innofinapps.1money",
+            "com.orion.cashew"
+        )
+        if (ignoredPackages.any { packageName.contains(it, ignoreCase = true) }) {
             return
         }
 
@@ -63,10 +75,24 @@ class BankNotificationListener : NotificationListenerService() {
                     val categories = db.categoryDao().getAllCategoriesSync()
                     val suggestedCatId = BankNotificationParser.matchCategoryId(categories, parsed.matchedCategoryKeyword)
 
+                    val rawTextVal = "${title?.let { "$it: " } ?: ""}$text"
+                    val timestampVal = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
+                    
+                    // Duplicate check: same text within the last 10 minutes
+                    val duplicate = db.pendingNotificationDao().findRecentDuplicateByText(
+                        rawText = rawTextVal,
+                        sinceTime = timestampVal - 10 * 60 * 1000L
+                    )
+                    
+                    if (duplicate != null) {
+                        Log.d("BankNotificationListener", "Skipping duplicate notification: $rawTextVal")
+                        return@launch
+                    }
+
                     val entity = PendingNotificationEntity(
                         packageName = packageName,
                         bankName = parsed.bankName,
-                        rawText = "${title?.let { "$it: " } ?: ""}$text",
+                        rawText = rawTextVal,
                         type = parsed.type,
                         amount = parsed.amount,
                         currency = parsed.currency,
@@ -74,9 +100,8 @@ class BankNotificationListener : NotificationListenerService() {
                         cardLast4 = parsed.cardLast4,
                         suggestedCategoryId = suggestedCatId,
                         suggestedAccountId = matchedAccount?.id,
-                        timestamp = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
+                        timestamp = timestampVal
                     )
-
                     db.pendingNotificationDao().insertNotification(entity)
 
                     // Send push reminder if enabled so user gets reminded in background
