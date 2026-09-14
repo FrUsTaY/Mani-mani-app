@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoneyOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,6 +35,8 @@ fun TransactionItemCard(
     transaction: TransactionEntity,
     accountsMap: Map<Long, AccountEntity>,
     categoriesMap: Map<Long, CategoryEntity>,
+    goalsMap: Map<Long, com.example.data.entity.GoalEntity> = emptyMap(),
+    debtsMap: Map<Long, com.example.data.entity.DebtEntity> = emptyMap(),
     onDelete: (TransactionEntity) -> Unit,
     onClick: ((TransactionEntity) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -41,33 +44,38 @@ fun TransactionItemCard(
     val account = accountsMap[transaction.accountId]
     val toAccount = transaction.toAccountId?.let { accountsMap[it] }
     val category = transaction.categoryId?.let { categoriesMap[it] }
+    val goal = transaction.goalId?.let { goalsMap[it] }
+    val debt = transaction.debtId?.let { debtsMap[it] }
     val currency = account?.currency ?: "RUB"
 
     val (icon, badgeColor, title, subtitle) = when (transaction.type) {
         "EXPENSE" -> {
-            val iconVec = category?.let { IconHelper.getIconByName(it.iconName) } ?: IconHelper.getIconByName("shopping_cart")
-            val color = category?.let { IconHelper.parseColor(it.colorHex) } ?: ExpenseRed
+            val iconVec = if (debt != null) Icons.Default.MoneyOff else category?.let { IconHelper.getIconByName(it.iconName) } ?: IconHelper.getIconByName("shopping_cart")
+            val color = if (debt != null) MaterialTheme.colorScheme.error else category?.let { IconHelper.parseColor(it.colorHex) } ?: ExpenseRed
             val sub = buildString {
                 append(account?.name ?: "Счёт")
                 if (transaction.note.isNotBlank()) append(" • ${transaction.note}")
             }
-            Quad(iconVec, color, category?.name ?: "Расход", sub)
+            val dispTitle = debt?.let { "Долг: ${it.personName}" } ?: category?.name ?: "Расход"
+            Quad(iconVec, color, dispTitle, sub)
         }
         "INCOME" -> {
-            val iconVec = category?.let { IconHelper.getIconByName(it.iconName) } ?: IconHelper.getIconByName("payments")
-            val color = category?.let { IconHelper.parseColor(it.colorHex) } ?: IncomeGreen
+            val iconVec = if (debt != null) Icons.Default.MoneyOff else category?.let { IconHelper.getIconByName(it.iconName) } ?: IconHelper.getIconByName("payments")
+            val color = if (debt != null) MaterialTheme.colorScheme.error else category?.let { IconHelper.parseColor(it.colorHex) } ?: IncomeGreen
             val sub = buildString {
                 append(account?.name ?: "Счёт")
                 if (transaction.note.isNotBlank()) append(" • ${transaction.note}")
             }
-            Quad(iconVec, color, category?.name ?: "Доход", sub)
+            val dispTitle = debt?.let { "Возврат долга: ${it.personName}" } ?: category?.name ?: "Доход"
+            Quad(iconVec, color, dispTitle, sub)
         }
         else -> {
-            val iconVec = Icons.AutoMirrored.Filled.CompareArrows
-            val color = TransferBlue
+            val iconVec = if (goal != null) IconHelper.getIconByName(goal.iconName) else Icons.AutoMirrored.Filled.CompareArrows
+            val color = if (goal != null) IconHelper.parseColor(goal.colorHex) else TransferBlue
             val fromName = account?.name ?: "Счёт"
-            val toName = toAccount?.name ?: "Счёт"
-            Quad(iconVec, color, "Перевод", "$fromName → $toName")
+            val toName = if (goal != null) "Копилка: ${goal.name}" else toAccount?.name ?: "Счёт"
+            val dispTitle = if (goal != null) "В копилку" else "Перевод"
+            Quad(iconVec, color, dispTitle, "$fromName → $toName")
         }
     }
 

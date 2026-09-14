@@ -35,6 +35,8 @@ fun TransactionsScreen(
     var selectedAccountIdFilter by remember { mutableStateOf<Long?>(null) }
 
     val accountsMap = remember(state.accounts) { state.accounts.associateBy { it.id } }
+    val goalsMap = remember(state.goals) { state.goals.associateBy { it.id } }
+    val debtsMap = remember(state.debts) { state.debts.associateBy { it.id } }
     val categoriesMap = remember(state.categories) { state.categories.associateBy { it.id } }
 
     val filteredTransactions = remember(
@@ -219,6 +221,8 @@ fun TransactionsScreen(
                             transaction = tx,
                             accountsMap = accountsMap,
                             categoriesMap = categoriesMap,
+goalsMap = goalsMap,
+debtsMap = debtsMap,
                             onDelete = onDeleteTransaction,
                             onClick = { onEditTransaction(tx) }
                         )

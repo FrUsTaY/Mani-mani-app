@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,6 +19,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
@@ -31,15 +34,20 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.entity.BudgetEntity
 import com.example.data.entity.CategoryEntity
+import com.example.data.entity.PlannedTransactionEntity
 import com.example.service.UserFinancePreferences
 import com.example.service.gemini.AiPromptType
 import com.example.ui.util.CurrencyHelper
 import com.example.ui.util.IconHelper
+import com.example.ui.theme.IncomeGreen
+import com.example.ui.theme.ExpenseRed
 import com.example.ui.viewmodel.FinanceUiState
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
+
+
 
 data class PlannedPaymentItem(
     val id: String = UUID.randomUUID().toString(),
@@ -53,12 +61,17 @@ data class PlannedPaymentItem(
 /**
  * The main "Планы" view matching Zen-money's full UI/UX from the screenshots.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ZenPlansMainView(
     state: FinanceUiState,
     onAddBudget: (categoryId: Long?, limitAmount: Double) -> Unit,
     onDeleteBudget: (BudgetEntity) -> Unit,
+    onAddPlannedTransaction: (com.example.data.entity.PlannedTransactionEntity) -> Unit = {},
+    onUpdatePlannedTransaction: (com.example.data.entity.PlannedTransactionEntity) -> Unit = {},
+    onDeletePlannedTransaction: (com.example.data.entity.PlannedTransactionEntity) -> Unit = {},
+    onAddTransaction: (com.example.data.entity.TransactionEntity) -> Unit = {},
     selectedSubTab: Int = 0,
     onSubTabSelected: (Int) -> Unit = {},
     subTabs: List<String> = listOf("Планы", "Копилки", "Долги"),
@@ -89,15 +102,13 @@ fun ZenPlansMainView(
         SimpleDateFormat("d MMM", Locale("ru")).format(cal.time)
     }
 
-    // Planned items state (stored in session or preferences)
-    var plannedPayments by remember {
-        mutableStateOf<List<PlannedPaymentItem>>(emptyList())
-    }
 
     // Modal dialog states
     var showInfoDialog by remember { mutableStateOf(false) }
     var showPlannedPaymentsSheet by remember { mutableStateOf(false) }
     var showAddPlannedPaymentDialog by remember { mutableStateOf(false) }
+    var itemToEdit by remember { mutableStateOf<com.example.data.entity.PlannedTransactionEntity?>(null) }
+    var itemToExecute by remember { mutableStateOf<com.example.data.entity.PlannedTransactionEntity?>(null) }
     var categoryToEditPlan by remember { mutableStateOf<CategoryEntity?>(null) }
     var showAddCategoryPlanDialog by remember { mutableStateOf(false) }
 
@@ -151,12 +162,12 @@ fun ZenPlansMainView(
     val totalCategoryBudgets = state.budgets.sumOf { it.limitAmount }
 
     // Planned upcoming payments in this cycle
-    val remainingPlannedPayments = plannedPayments
-        .filter { !it.isIncome && (it.dayOfMonth >= period.dayOfCycle || !isCurrentCycle) }
+    val remainingPlannedPayments = state.plannedTransactions
+        .filter { it.type == "EXPENSE" && (Calendar.getInstance().apply { timeInMillis = it.plannedDate }.get(Calendar.DAY_OF_MONTH) >= period.dayOfCycle || !isCurrentCycle) }
         .sumOf { it.amount }
 
-    val remainingPlannedIncome = plannedPayments
-        .filter { it.isIncome && (it.dayOfMonth >= period.dayOfCycle || !isCurrentCycle) }
+    val remainingPlannedIncome = state.plannedTransactions
+        .filter { it.type == "INCOME" && (Calendar.getInstance().apply { timeInMillis = it.plannedDate }.get(Calendar.DAY_OF_MONTH) >= period.dayOfCycle || !isCurrentCycle) }
         .sumOf { it.amount }
 
     // "Ещё в планах" (Remaining planned expenses)
@@ -201,7 +212,7 @@ fun ZenPlansMainView(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(
+                            border = BorderStroke(
                                 1.dp,
                                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                             ),
@@ -221,7 +232,7 @@ fun ZenPlansMainView(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "${plannedPayments.size}",
+                                    text = "${state.plannedTransactions.size}",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
                                 )
@@ -258,7 +269,7 @@ fun ZenPlansMainView(
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                            border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onSubTabSelected(index) }
@@ -294,7 +305,7 @@ fun ZenPlansMainView(
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        border = androidx.compose.foundation.BorderStroke(
+                        border = BorderStroke(
                             1.dp,
                             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                         )
@@ -320,7 +331,7 @@ fun ZenPlansMainView(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Расходы",
+                                text = "Бюджеты по категориям",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -434,7 +445,7 @@ fun ZenPlansMainView(
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = if (isDarkTheme) Color(0xFF132E22) else Color(0xFFF0FDF4),
-                        border = androidx.compose.foundation.BorderStroke(
+                        border = BorderStroke(
                             1.dp,
                             if (isDarkTheme) Color(0xFF22543D) else Color(0xFF81C784).copy(alpha = 0.55f)
                         ),
@@ -502,7 +513,7 @@ fun ZenPlansMainView(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "Деньги на месяц",
+                                        text = "Ожидаемые операции",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 17.sp
@@ -544,8 +555,13 @@ fun ZenPlansMainView(
                                         currency = state.baseCurrency
                                     )
                                     MoneySubRow(
-                                        title = "Запланированные доходы",
+                                        title = "Будущие доходы (ожидаемые)",
                                         amount = remainingPlannedIncome,
+                                        currency = state.baseCurrency
+                                    )
+                                    MoneySubRow(
+                                        title = "Будущие расходы (календарные)",
+                                        amount = remainingPlannedPayments,
                                         currency = state.baseCurrency
                                     )
 
@@ -556,7 +572,7 @@ fun ZenPlansMainView(
                                     ) {
                                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Запланировать доход")
+                                        Text("Добавить план / операцию")
                                     }
                                 }
                             }
@@ -585,7 +601,7 @@ fun ZenPlansMainView(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "Расходы",
+                                        text = "Бюджеты по категориям",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 17.sp
@@ -668,15 +684,49 @@ fun ZenPlansMainView(
     // Sheet: Planned Operations [📅 count]
     if (showPlannedPaymentsSheet) {
         ZenPlannedPaymentsDialog(
-            items = plannedPayments,
+            items = state.plannedTransactions,
             currency = state.baseCurrency,
             onDismiss = { showPlannedPaymentsSheet = false },
             onAddItem = {
+                itemToEdit = null
                 showPlannedPaymentsSheet = false
                 showAddPlannedPaymentDialog = true
             },
-            onDeleteItem = { itemId ->
-                plannedPayments = plannedPayments.filter { it.id != itemId }
+            onEditItem = { item ->
+                itemToEdit = item
+                showPlannedPaymentsSheet = false
+                showAddPlannedPaymentDialog = true
+            },
+            onDeleteItem = { item ->
+                onDeletePlannedTransaction(item)
+            },
+            onExecuteItem = { item ->
+                itemToExecute = item
+                showPlannedPaymentsSheet = false
+            }
+        )
+    }
+
+    // Dialog: Execute Planned Payment
+    if (itemToExecute != null) {
+        ExecutePlanDialog(
+            item = itemToExecute!!,
+            accounts = state.accounts,
+            categories = state.categories,
+            onDismiss = { itemToExecute = null },
+            onConfirm = { accountId, categoryId ->
+                onAddTransaction(
+                    com.example.data.entity.TransactionEntity(
+                        type = itemToExecute!!.type,
+                        amount = itemToExecute!!.amount,
+                        accountId = accountId,
+                        categoryId = categoryId,
+                        note = itemToExecute!!.note,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+                onDeletePlannedTransaction(itemToExecute!!)
+                itemToExecute = null
             }
         )
     }
@@ -684,15 +734,34 @@ fun ZenPlansMainView(
     // Dialog: Add Planned Payment
     if (showAddPlannedPaymentDialog) {
         AddPlannedPaymentDialog(
-            onDismiss = { showAddPlannedPaymentDialog = false },
-            onConfirm = { title, amount, isIncome, day ->
-                plannedPayments = plannedPayments + PlannedPaymentItem(
-                    title = title,
-                    amount = amount,
-                    isIncome = isIncome,
-                    dayOfMonth = day
-                )
+            existingItem = itemToEdit,
+            onDismiss = { showAddPlannedPaymentDialog = false; itemToEdit = null },
+            onConfirm = { title, amount, isIncome, day, reminderType ->
+                val cal = Calendar.getInstance()
+                cal.set(Calendar.DAY_OF_MONTH, day)
+                val newTimestamp = cal.timeInMillis
+                if (itemToEdit != null) {
+                    onUpdatePlannedTransaction(itemToEdit!!.copy(
+                        note = title,
+                        amount = amount,
+                        type = if (isIncome) "INCOME" else "EXPENSE",
+                        plannedDate = newTimestamp,
+                        reminderType = reminderType
+                    ))
+                } else {
+                    onAddPlannedTransaction(
+                        com.example.data.entity.PlannedTransactionEntity(
+                            type = if (isIncome) "INCOME" else "EXPENSE",
+                            amount = amount,
+                            accountId = state.accounts.firstOrNull()?.id ?: 1L,
+                            plannedDate = newTimestamp,
+                            note = title,
+                            reminderType = reminderType
+                        )
+                    )
+                }
                 showAddPlannedPaymentDialog = false
+                itemToEdit = null
             }
         )
     }
@@ -735,8 +804,9 @@ fun ZenPlansMainView(
     }
 }
 
+
 /**
- * Detailed Zen Forecast Line Chart matching Screenshot 2
+ * Detailed Zen Forecast Line Chart matching Screenshot 2 (INTERACTIVE)
  */
 @Composable
 fun ZenDetailedForecastChart(
@@ -759,22 +829,32 @@ fun ZenDetailedForecastChart(
     val verticalGuideColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
 
     // Calculate dynamic Y-axis maximum
-    val ceilingVal = max(totalMoney, max(projectedTotalExpenses, spentSoFar)).coerceAtLeast(50000.0)
+    val ceilingVal = kotlin.math.max(totalMoney, kotlin.math.max(projectedTotalExpenses, spentSoFar)).coerceAtLeast(50000.0)
     val topTick = (Math.ceil(ceilingVal / 50000.0) * 50000.0).toInt()
     val midTick = topTick / 2
+
+    var touchX by remember { mutableStateOf<Float?>(null) }
+    var tooltipMoney by remember { mutableStateOf(0.0) }
+    var tooltipSpend by remember { mutableStateOf(0.0) }
+    var tooltipIsFuture by remember { mutableStateOf(false) }
+    
+    var chartWidthPx by remember { mutableStateOf(1f) }
+    var leftPadPx by remember { mutableStateOf(0f) }
+    
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .testTag("zen_detailed_forecast_chart")
     ) {
-        // Date labels above chart (e.g. "13 сен" above cursor and "9 окт" at far right)
+        // Date labels above chart
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 58.dp, end = 12.dp)
         ) {
-            val cycleRatio = (dayOfCycle.toFloat() / max(totalDaysInCycle, 1)).coerceIn(0.08f, 0.92f)
+            val cycleRatio = (dayOfCycle.toFloat() / kotlin.math.max(totalDaysInCycle, 1)).coerceIn(0.08f, 0.92f)
 
             // Today date label
             Text(
@@ -801,26 +881,43 @@ fun ZenDetailedForecastChart(
         Spacer(modifier = Modifier.height(4.dp))
 
         // Main Chart Canvas with Left Y-Axis Ticks
+        
+        val primaryColor = MaterialTheme.colorScheme.primary
+        val surfaceVariantColor = MaterialTheme.colorScheme.surfaceVariant
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(160.dp)
+                .height(180.dp)
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset -> touchX = offset.x },
+                            onDragEnd = { touchX = null },
+                            onDragCancel = { touchX = null },
+                            onDrag = { change, _ ->
+                                touchX = change.position.x
+                            }
+                        )
+                    }
+            ) {
                 val width = size.width
                 val height = size.height
 
                 val leftPadding = 56.dp.toPx()
                 val rightPadding = 16.dp.toPx()
-                val topPadding = 12.dp.toPx()
+                val topPadding = 24.dp.toPx() // Increased top padding for tooltips
                 val bottomPadding = 16.dp.toPx()
 
-                val chartWidth = width - leftPadding - rightPadding
-                val chartHeight = height - topPadding - bottomPadding
+                leftPadPx = leftPadding
+                chartWidthPx = width - leftPadding - rightPadding
+                val chartHeightPx = height - topPadding - bottomPadding
 
                 // Horizontal Guidelines
                 for (i in 0..2) {
-                    val y = topPadding + (chartHeight / 2) * i
+                    val y = topPadding + (chartHeightPx / 2) * i
                     drawLine(
                         color = gridColor,
                         start = Offset(leftPadding, y),
@@ -829,27 +926,22 @@ fun ZenDetailedForecastChart(
                     )
                 }
 
-                val cycleRatio = (dayOfCycle.toFloat() / max(totalDaysInCycle, 1)).coerceIn(0.08f, 0.92f)
-                val currentX = leftPadding + chartWidth * cycleRatio
-
-                // Vertical Dashed Guideline at today date
-                val verticalDash = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
-                drawLine(
-                    color = verticalGuideColor,
-                    start = Offset(currentX, topPadding),
-                    end = Offset(currentX, height - bottomPadding),
-                    strokeWidth = 1.5f,
-                    pathEffect = verticalDash
-                )
+                val cycleRatio = (dayOfCycle.toFloat() / kotlin.math.max(totalDaysInCycle, 1)).coerceIn(0.0f, 1.0f)
+                val currentX = leftPadding + chartWidthPx * cycleRatio
 
                 // Normalized Y helpers
                 fun toY(amount: Double): Float {
                     val norm = (amount / topTick).coerceIn(0.0, 1.0).toFloat()
-                    return height - bottomPadding - (chartHeight * norm)
+                    return height - bottomPadding - (chartHeightPx * norm)
+                }
+                
+                fun toValue(y: Float): Double {
+                    val norm = (height - bottomPadding - y) / chartHeightPx
+                    return (norm * topTick).toDouble().coerceAtLeast(0.0)
                 }
 
                 val moneyStartY = toY(startingMoney)
-                val moneyCurrentY = toY(totalMoney * 0.72)
+                val moneyCurrentY = toY(totalMoney * 0.72) // Visual approximation
                 val moneyEndY = toY(totalMoney)
 
                 val spendStartY = height - bottomPadding
@@ -860,87 +952,130 @@ fun ZenDetailedForecastChart(
                 val moneySolidPath = Path().apply {
                     moveTo(leftPadding, moneyStartY)
                     val midX = (leftPadding + currentX) / 2
-                    cubicTo(
-                        midX, moneyStartY,
-                        midX, moneyCurrentY,
-                        currentX, moneyCurrentY
-                    )
+                    cubicTo(midX, moneyStartY, midX, moneyCurrentY, currentX, moneyCurrentY)
                 }
-                drawPath(
-                    path = moneySolidPath,
-                    color = forecastGreen,
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                )
+                drawPath(path = moneySolidPath, color = forecastGreen, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
 
                 // 2. Dashed Green Money Curve (Today -> End of cycle)
                 val dashEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 9f), 0f)
                 val moneyDashedPath = Path().apply {
                     moveTo(currentX, moneyCurrentY)
-                    val endX = leftPadding + chartWidth
+                    val endX = leftPadding + chartWidthPx
                     val midX = (currentX + endX) / 2
-                    cubicTo(
-                        midX, moneyCurrentY,
-                        midX, moneyEndY,
-                        endX, moneyEndY
-                    )
+                    cubicTo(midX, moneyCurrentY, midX, moneyEndY, endX, moneyEndY)
                 }
-                drawPath(
-                    path = moneyDashedPath,
-                    color = forecastGreen,
-                    style = Stroke(width = 2.5.dp.toPx(), pathEffect = dashEffect, cap = StrokeCap.Round)
-                )
+                drawPath(path = moneyDashedPath, color = forecastGreen, style = Stroke(width = 2.5.dp.toPx(), pathEffect = dashEffect, cap = StrokeCap.Round))
 
                 // 3. Solid Charcoal Expense Curve (0 -> Today)
                 val spendSolidPath = Path().apply {
                     moveTo(leftPadding, spendStartY)
                     val midX = (leftPadding + currentX) / 2
-                    cubicTo(
-                        midX, spendStartY,
-                        midX, spendCurrentY,
-                        currentX, spendCurrentY
-                    )
+                    cubicTo(midX, spendStartY, midX, spendCurrentY, currentX, spendCurrentY)
                 }
-                drawPath(
-                    path = spendSolidPath,
-                    color = charcoalColor,
-                    style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
-                )
+                drawPath(path = spendSolidPath, color = charcoalColor, style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round))
 
                 // 4. Dashed Blue Plan Expense Curve (Today -> End of cycle)
                 val spendDashedPath = Path().apply {
                     moveTo(currentX, spendCurrentY)
-                    val endX = leftPadding + chartWidth
+                    val endX = leftPadding + chartWidthPx
                     val midX = (currentX + endX) / 2
-                    cubicTo(
-                        midX, spendCurrentY,
-                        midX, spendProjectedEndY,
-                        endX, spendProjectedEndY
-                    )
+                    cubicTo(midX, spendCurrentY, midX, spendProjectedEndY, endX, spendProjectedEndY)
                 }
-                drawPath(
-                    path = spendDashedPath,
-                    color = planBlue,
-                    style = Stroke(width = 3.dp.toPx(), pathEffect = dashEffect, cap = StrokeCap.Round)
-                )
+                drawPath(path = spendDashedPath, color = planBlue, style = Stroke(width = 3.dp.toPx(), pathEffect = dashEffect, cap = StrokeCap.Round))
 
-                // 5. Dots at Current Date on the vertical line
-                drawCircle(
-                    color = forecastGreen,
-                    radius = 4.5.dp.toPx(),
-                    center = Offset(currentX, moneyCurrentY)
-                )
-                drawCircle(
-                    color = charcoalColor,
-                    radius = 4.5.dp.toPx(),
-                    center = Offset(currentX, spendCurrentY)
-                )
+                // Interpolation function
+                fun getBezierYForX(targetX: Float, x0: Float, y0: Float, x3: Float, y3: Float): Float {
+                    if (targetX <= x0) return y0
+                    if (targetX >= x3) return y3
+                    val t = (targetX - x0) / (x3 - x0)
+                    val u = 1 - t
+                    val y1 = y0
+                    val y2 = y3
+                    return (u * u * u * y0) + (3 * u * u * t * y1) + (3 * u * t * t * y2) + (t * t * t * y3)
+                }
+                
+                fun getCurveYForX(targetX: Float, isMoney: Boolean): Float {
+                    if (targetX <= currentX) {
+                        val startY = if (isMoney) moneyStartY else spendStartY
+                        val endY = if (isMoney) moneyCurrentY else spendCurrentY
+                        return getBezierYForX(targetX, leftPadding, startY, currentX, endY)
+                    } else {
+                        val startY = if (isMoney) moneyCurrentY else spendCurrentY
+                        val endY = if (isMoney) moneyEndY else spendProjectedEndY
+                        val endX = leftPadding + chartWidthPx
+                        return getBezierYForX(targetX, currentX, startY, endX, endY)
+                    }
+                }
+
+                // Draw vertical line at today OR at touch position
+                val verticalDash = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                if (touchX == null) {
+                    drawLine(
+                        color = verticalGuideColor,
+                        start = Offset(currentX, topPadding),
+                        end = Offset(currentX, height - bottomPadding),
+                        strokeWidth = 1.5f,
+                        pathEffect = verticalDash
+                    )
+                    drawCircle(color = forecastGreen, radius = 4.5.dp.toPx(), center = Offset(currentX, moneyCurrentY))
+                    drawCircle(color = charcoalColor, radius = 4.5.dp.toPx(), center = Offset(currentX, spendCurrentY))
+                } else {
+                    // INTERACTIVE MODE
+                    val safeX = touchX!!.coerceIn(leftPadding, leftPadding + chartWidthPx)
+                    
+                    drawLine(
+                        color = primaryColor,
+                        start = Offset(safeX, topPadding),
+                        end = Offset(safeX, height - bottomPadding),
+                        strokeWidth = 2f
+                    )
+                    
+                    val touchMoneyY = getCurveYForX(safeX, true)
+                    val touchSpendY = getCurveYForX(safeX, false)
+                    
+                    drawCircle(color = forecastGreen, radius = 5.dp.toPx(), center = Offset(safeX, touchMoneyY))
+                    drawCircle(color = if (safeX <= currentX) charcoalColor else planBlue, radius = 5.dp.toPx(), center = Offset(safeX, touchSpendY))
+                    
+                    // Update state for tooltip
+                    tooltipMoney = toValue(touchMoneyY)
+                    tooltipSpend = toValue(touchSpendY)
+                    tooltipIsFuture = safeX > currentX
+                }
             }
 
-            // Left Y-Axis Numbers (300 000, 150 000, 0)
+            // Interactive Tooltip Overlay
+            if (touchX != null) {
+                val safeX = touchX!!.coerceIn(leftPadPx, leftPadPx + chartWidthPx)
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = surfaceVariantColor,
+                        tonalElevation = 4.dp,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(
+                                x = with(density) { (safeX - 60.dp.toPx()).toDp().coerceIn(leftPadPx.toDp(), (leftPadPx + chartWidthPx - 130.dp.toPx()).toDp()) },
+                                y = 0.dp
+                            )
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                            Text("Свободно: ${CurrencyHelper.formatAmount(tooltipMoney, currency)}", style = MaterialTheme.typography.labelSmall, color = forecastGreen, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("Расходы: ${CurrencyHelper.formatAmount(tooltipSpend, currency)}", style = MaterialTheme.typography.labelSmall, color = if (!tooltipIsFuture) charcoalColor else planBlue, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // Left Y-Axis Numbers
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .padding(start = 6.dp, top = 6.dp, bottom = 12.dp),
+                    .padding(start = 6.dp, top = 24.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
@@ -1339,11 +1474,13 @@ fun ZenPlansInfoModal(
  */
 @Composable
 fun ZenPlannedPaymentsDialog(
-    items: List<PlannedPaymentItem>,
+    items: List<com.example.data.entity.PlannedTransactionEntity>,
     currency: String,
     onDismiss: () -> Unit,
     onAddItem: () -> Unit,
-    onDeleteItem: (String) -> Unit
+    onEditItem: (com.example.data.entity.PlannedTransactionEntity) -> Unit,
+    onDeleteItem: (com.example.data.entity.PlannedTransactionEntity) -> Unit,
+    onExecuteItem: (com.example.data.entity.PlannedTransactionEntity) -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -1358,12 +1495,20 @@ fun ZenPlannedPaymentsDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Запланированные операции",
+                        text = "Ожидаемые операции",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Закрыть")
+                    IconButton(
+                        onClick = onAddItem,
+                        modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer).size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Добавить",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
 
@@ -1378,47 +1523,73 @@ fun ZenPlannedPaymentsDialog(
                     )
                 } else {
                     items.forEach { item ->
+                        val cal = Calendar.getInstance().apply { timeInMillis = item.plannedDate }
+                        val dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
+                        val isIncome = item.type == "INCOME"
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .clickable { onEditItem(item) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Colored date dot
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isIncome) IncomeGreen.copy(alpha = 0.15f) else ExpenseRed.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "${dayOfMonth}",
+                                    color = if (isIncome) IncomeGreen else ExpenseRed,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = item.title,
-                                    fontWeight = FontWeight.SemiBold,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    text = item.note,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "${item.dayOfMonth}-е число месяца • ${if (item.isIncome) "Поступление" else "Платеж"}",
+                                    text = if (isIncome) "Доход" else "Расход",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
                             Text(
-                                text = (if (item.isIncome) "+ " else "- ") + CurrencyHelper.formatAmount(item.amount, currency),
+                                text = (if (isIncome) "+" else "-") + CurrencyHelper.formatAmount(item.amount, currency),
+                                style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = if (item.isIncome) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                                color = if (isIncome) IncomeGreen else MaterialTheme.colorScheme.onSurface
                             )
-                            IconButton(onClick = { onDeleteItem(item.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+
+                            IconButton(onClick = { onExecuteItem(item) }) {
+                                Icon(Icons.Default.Check, contentDescription = "Исполнить", tint = MaterialTheme.colorScheme.primary)
+                            }
+                            IconButton(onClick = { onDeleteItem(item) }) {
+                                Icon(Icons.Default.Close, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.padding(start = 56.dp))
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                FilledTonalButton(
-                    onClick = onAddItem,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Добавить операцию в планы")
+                    TextButton(onClick = onDismiss) {
+                        Text("Закрыть")
+                    }
                 }
             }
         }
@@ -1428,15 +1599,32 @@ fun ZenPlannedPaymentsDialog(
 /**
  * Dialog to add a planned payment or income
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun AddPlannedPaymentDialog(
+    existingItem: com.example.data.entity.PlannedTransactionEntity? = null,
     onDismiss: () -> Unit,
-    onConfirm: (title: String, amount: Double, isIncome: Boolean, day: Int) -> Unit
+    onConfirm: (title: String, amount: Double, isIncome: Boolean, day: Int, reminderType: String) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var amountText by remember { mutableStateOf("") }
-    var isIncome by remember { mutableStateOf(false) }
-    var dayText by remember { mutableStateOf("15") }
+    var title by remember { mutableStateOf(existingItem?.note ?: "") }
+    var amountText by remember { mutableStateOf(existingItem?.amount?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
+    var isIncome by remember { mutableStateOf(existingItem?.type == "INCOME") }
+    var dayText by remember { 
+        mutableStateOf(
+            existingItem?.plannedDate?.let { 
+                Calendar.getInstance().apply { timeInMillis = it }.get(Calendar.DAY_OF_MONTH).toString() 
+            } ?: "15"
+        )
+    }
+    var reminderType by remember { mutableStateOf(existingItem?.reminderType ?: "NONE") }
+    var showReminderDropdown by remember { mutableStateOf(false) }
+    
+    val reminderLabels = mapOf(
+        "NONE" to "Не напоминать",
+        "ON_DAY" to "В день платежа (утром)",
+        "1_DAY_BEFORE" to "За 1 день",
+        "3_DAYS_BEFORE" to "За 3 дня"
+    )
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -1485,7 +1673,7 @@ fun AddPlannedPaymentDialog(
                 OutlinedTextField(
                     value = amountText,
                     onValueChange = { amountText = it.filter { c -> c.isDigit() || c == '.' } },
-                    label = { Text("Сумма (₽)") },
+                    label = { Text("Сумма") },
                     shape = RoundedCornerShape(12.dp),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
@@ -1502,6 +1690,39 @@ fun AddPlannedPaymentDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = showReminderDropdown,
+                    onExpandedChange = { showReminderDropdown = !showReminderDropdown },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = reminderLabels[reminderType] ?: "Не напоминать",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Напоминание") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showReminderDropdown) },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = showReminderDropdown,
+                        onDismissRequest = { showReminderDropdown = false }
+                    ) {
+                        reminderLabels.forEach { (key, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    reminderType = key
+                                    showReminderDropdown = false
+                                }
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
@@ -1515,12 +1736,10 @@ fun AddPlannedPaymentDialog(
                     Button(
                         onClick = {
                             val amount = amountText.toDoubleOrNull() ?: 0.0
-                            val day = dayText.toIntOrNull()?.coerceIn(1, 31) ?: 10
-                            if (title.isNotBlank() && amount > 0) {
-                                onConfirm(title, amount, isIncome, day)
-                            }
-                        },
-                        enabled = title.isNotBlank() && (amountText.toDoubleOrNull() ?: 0.0) > 0
+                            val day = dayText.toIntOrNull() ?: 15
+                            if (title.isBlank() || amount <= 0 || day !in 1..31) return@Button
+                            onConfirm(title.trim(), amount, isIncome, day, reminderType)
+                        }
                     ) {
                         Text("Сохранить")
                     }
@@ -1705,6 +1924,139 @@ fun QuickAddPlanDialog(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) {
                         Text("Закрыть")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun ExecutePlanDialog(
+    item: com.example.data.entity.PlannedTransactionEntity,
+    accounts: List<com.example.data.entity.AccountEntity>,
+    categories: List<com.example.data.entity.CategoryEntity>,
+    onDismiss: () -> Unit,
+    onConfirm: (accountId: Long, categoryId: Long?) -> Unit
+) {
+    var selectedAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: -1L) }
+    var selectedCategoryId by remember { mutableStateOf(item.categoryId) }
+    
+    var showAccountDropdown by remember { mutableStateOf(false) }
+    var showCategoryDropdown by remember { mutableStateOf(false) }
+    
+    val selectedAccountName = accounts.find { it.id == selectedAccountId }?.name ?: "Выберите счет"
+    val selectedCategoryName = categories.find { it.id == selectedCategoryId }?.name ?: "Без категории"
+    val isIncome = item.type == "INCOME"
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth().testTag("execute_plan_dialog")
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = "Исполнить операцию",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = "${item.note} (${item.amount})",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Account Selection
+                androidx.compose.material3.ExposedDropdownMenuBox(
+                    expanded = showAccountDropdown,
+                    onExpandedChange = { showAccountDropdown = !showAccountDropdown },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = selectedAccountName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Счет списания/зачисления") },
+                        trailingIcon = { androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = showAccountDropdown) },
+                        colors = androidx.compose.material3.ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = showAccountDropdown,
+                        onDismissRequest = { showAccountDropdown = false }
+                    ) {
+                        accounts.forEach { acc ->
+                            DropdownMenuItem(
+                                text = { Text(acc.name) },
+                                onClick = {
+                                    selectedAccountId = acc.id
+                                    showAccountDropdown = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Category Selection
+                androidx.compose.material3.ExposedDropdownMenuBox(
+                    expanded = showCategoryDropdown,
+                    onExpandedChange = { showCategoryDropdown = !showCategoryDropdown },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = selectedCategoryName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Категория") },
+                        trailingIcon = { androidx.compose.material3.ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCategoryDropdown) },
+                        colors = androidx.compose.material3.ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = showCategoryDropdown,
+                        onDismissRequest = { showCategoryDropdown = false }
+                    ) {
+                        val filteredCategories = categories.filter { it.type == (if (isIncome) "INCOME" else "EXPENSE") }
+                        filteredCategories.forEach { cat ->
+                            DropdownMenuItem(
+                                text = { Text(cat.name) },
+                                onClick = {
+                                    selectedCategoryId = cat.id
+                                    showCategoryDropdown = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Отмена")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onConfirm(selectedAccountId, selectedCategoryId)
+                        },
+                        enabled = selectedAccountId != -1L
+                    ) {
+                        Text("Исполнить")
                     }
                 }
             }

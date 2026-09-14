@@ -120,6 +120,9 @@ interface GoalDao {
     @Query("SELECT * FROM goals ORDER BY id ASC")
     fun getAllGoals(): Flow<List<GoalEntity>>
 
+    @Query("SELECT * FROM goals WHERE id = :id")
+    suspend fun getGoalById(id: Long): GoalEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGoal(goal: GoalEntity): Long
 
@@ -138,6 +141,9 @@ interface DebtDao {
     @Query("SELECT * FROM debts ORDER BY isSettled ASC, id DESC")
     fun getAllDebts(): Flow<List<DebtEntity>>
 
+    @Query("SELECT * FROM debts WHERE id = :id")
+    suspend fun getDebtById(id: Long): DebtEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDebt(debt: DebtEntity): Long
 
@@ -149,4 +155,22 @@ interface DebtDao {
 
     @Query("DELETE FROM debts")
     suspend fun deleteAllDebts()
+}
+
+@Dao
+interface PlannedTransactionDao {
+    @Query("SELECT * FROM planned_transactions ORDER BY plannedDate ASC")
+    fun getAllPlannedTransactions(): Flow<List<PlannedTransactionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlannedTransaction(transaction: PlannedTransactionEntity): Long
+
+    @Update
+    suspend fun updatePlannedTransaction(transaction: PlannedTransactionEntity)
+
+    @Delete
+    suspend fun deletePlannedTransaction(transaction: PlannedTransactionEntity)
+
+    @Query("DELETE FROM planned_transactions")
+    suspend fun deleteAllPlannedTransactions()
 }

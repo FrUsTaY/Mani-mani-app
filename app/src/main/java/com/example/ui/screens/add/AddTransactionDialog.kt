@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoneyOff
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.*
@@ -33,6 +35,8 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.entity.AccountEntity
 import com.example.data.entity.CategoryEntity
 import com.example.data.entity.TransactionEntity
+import com.example.data.entity.GoalEntity
+import com.example.data.entity.DebtEntity
 import com.example.service.UserBankHelper
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
@@ -45,9 +49,12 @@ import com.example.ui.util.IconHelper
 fun AddTransactionDialog(
     accounts: List<AccountEntity>,
     categories: List<CategoryEntity>,
+    goals: List<GoalEntity> = emptyList(),
+    debts: List<DebtEntity> = emptyList(),
     bankOfTheMonth: String = "VTB",
     transactionToEdit: TransactionEntity? = null,
     onDismiss: () -> Unit,
+    onManageCategories: () -> Unit = {},
     onConfirm: (
         type: String,
         amount: Double,
@@ -56,7 +63,9 @@ fun AddTransactionDialog(
         categoryId: Long?,
         note: String,
         tag: String,
-        excludeFromStats: Boolean
+        excludeFromStats: Boolean,
+        goalId: Long?,
+        debtId: Long?
     ) -> Unit
 ) {
     val activeAccounts = remember(accounts) { accounts.filter { !it.isArchived } }
@@ -80,8 +89,15 @@ fun AddTransactionDialog(
 
     var selectedToAccountId by remember {
         mutableStateOf(
-            transactionToEdit?.toAccountId ?: activeAccounts.getOrNull(1)?.id ?: activeAccounts.firstOrNull()?.id ?: 0L
+            if (transactionToEdit?.goalId != null) 0L else transactionToEdit?.toAccountId ?: activeAccounts.getOrNull(1)?.id ?: activeAccounts.firstOrNull()?.id ?: 0L
         )
+    }
+
+    var selectedGoalId by remember {
+        mutableStateOf(transactionToEdit?.goalId)
+    }
+    var selectedDebtId by remember {
+        mutableStateOf(transactionToEdit?.debtId)
     }
 
     val filteredCategories = remember(selectedType, categories) {
@@ -90,7 +106,7 @@ fun AddTransactionDialog(
 
     var selectedCategoryId by remember {
         mutableStateOf(
-            transactionToEdit?.categoryId ?: filteredCategories.firstOrNull()?.id
+            if (transactionToEdit?.debtId != null) null else transactionToEdit?.categoryId ?: filteredCategories.firstOrNull()?.id
         )
     }
 
@@ -402,6 +418,7 @@ fun AddTransactionDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            // accounts
                             items(accounts.filter { !it.isArchived && it.id != selectedAccountId }) { acc ->
                                 val isSelected = acc.id == selectedToAccountId
                                 val accColor = IconHelper.parseColor(acc.colorHex)
@@ -409,7 +426,7 @@ fun AddTransactionDialog(
                                     shape = RoundedCornerShape(14.dp),
                                     color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                                     border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.secondary) else null,
-                                    modifier = Modifier.clickable { selectedToAccountId = acc.id }
+                                    modifier = Modifier.clickable { selectedToAccountId = acc.id; selectedGoalId = null }
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -430,6 +447,44 @@ fun AddTransactionDialog(
                                             )
                                             Text(
                                                 text = CurrencyHelper.formatAmount(acc.balance, acc.currency),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            items(goals) { goal ->
+                                val isSelected = goal.id == selectedGoalId
+                                val goalColor = IconHelper.parseColor(goal.colorHex)
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.secondary) else null,
+                                    modifier = Modifier.clickable { 
+                                        selectedToAccountId = 0L 
+                                        selectedGoalId = goal.id 
+                                    }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(goalColor)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = "Копилка: " + goal.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                            Text(
+                                                text = CurrencyHelper.formatAmount(goal.currentAmount, "RUB"),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -463,7 +518,7 @@ fun AddTransactionDialog(
                                     color = if (isSelected) catColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                     border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, catColor) else null,
                                     modifier = Modifier
-                                        .clickable { selectedCategoryId = cat.id }
+                                        .clickable { selectedCategoryId = cat.id; selectedDebtId = null }
                                         .testTag("category_chip_${cat.id}")
                                 ) {
                                     Row(
@@ -491,6 +546,82 @@ fun AddTransactionDialog(
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                            items(debts) { debt ->
+                                val isSelected = debt.id == selectedDebtId
+                                val debtColor = MaterialTheme.colorScheme.error
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) debtColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, debtColor) else null,
+                                    modifier = Modifier
+                                        .clickable { 
+                                            selectedCategoryId = null 
+                                            selectedDebtId = debt.id 
+                                        }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape)
+                                                .background(debtColor),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoneyOff,
+                                                contentDescription = debt.personName,
+                                                tint = androidx.compose.ui.graphics.Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Долг: " + debt.personName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                            item {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.clickable { onManageCategories() }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Settings,
+                                                contentDescription = "Управление",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Управление",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
@@ -582,20 +713,35 @@ fun AddTransactionDialog(
                                 errorMessage = "Выберите счёт списания"
                                 return@Button
                             }
-                            if (selectedType == "TRANSFER" && selectedAccountId == selectedToAccountId) {
+                            if (selectedType == "TRANSFER" && selectedGoalId == null && selectedAccountId == selectedToAccountId) {
                                 errorMessage = "Выберите разные счета для перевода"
                                 return@Button
                             }
+                            if (selectedType == "TRANSFER" && selectedGoalId == null && (selectedToAccountId == null || selectedToAccountId == 0L)) {
+                                errorMessage = "Выберите счет зачисления или копилку"
+                                return@Button
+                            }
+                            if (selectedType != "TRANSFER" && selectedCategoryId == null && selectedDebtId == null) {
+                                errorMessage = "Выберите категорию или долг"
+                                return@Button
+                            }
 
+                            // If transferring to a goal, toAccountId is null.
+                            val finalToAccountId = if (selectedType == "TRANSFER" && selectedGoalId == null) selectedToAccountId else null
+                            // If it's a debt, categoryId is null.
+                            val finalCategoryId = if (selectedType != "TRANSFER" && selectedDebtId == null) selectedCategoryId else null
+                            
                             onConfirm(
                                 selectedType,
                                 amount,
                                 selectedAccountId,
-                                if (selectedType == "TRANSFER") selectedToAccountId else null,
-                                if (selectedType != "TRANSFER") selectedCategoryId else null,
+                                finalToAccountId,
+                                finalCategoryId,
                                 noteText.trim(),
                                 tagText.trim(),
-                                excludeFromStats
+                                excludeFromStats,
+                                if (selectedType == "TRANSFER") selectedGoalId else null,
+                                if (selectedType != "TRANSFER") selectedDebtId else null
                             )
                             onDismiss()
                         },

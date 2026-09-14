@@ -14,6 +14,7 @@ data class AccountEntity(
     val iconName: String = "account_balance_wallet",
     val isArchived: Boolean = false,
     val includeInTotal: Boolean = true,
+    val includeInAnalytics: Boolean = true,
     val orderIndex: Int = 0
 )
 
@@ -38,7 +39,9 @@ data class TransactionEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val note: String = "",
     val tag: String = "",
-    val excludeFromStats: Boolean = false
+    val excludeFromStats: Boolean = false,
+    val goalId: Long? = null,
+    val debtId: Long? = null
 )
 
 @Entity(tableName = "budgets")
@@ -69,4 +72,17 @@ data class DebtEntity(
     val dueDate: Long? = null,
     val note: String = "",
     val isSettled: Boolean = false
+)
+
+@Entity(tableName = "planned_transactions")
+data class PlannedTransactionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val type: String, // EXPENSE, INCOME, TRANSFER
+    val amount: Double,
+    val accountId: Long,
+    val toAccountId: Long? = null,
+    val categoryId: Long? = null,
+    val plannedDate: Long,
+    val note: String = "",
+    val reminderType: String = "NONE"
 )

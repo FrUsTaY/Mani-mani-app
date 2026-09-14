@@ -39,7 +39,9 @@ fun AddEditAccountDialog(
         balance: Double,
         currency: String,
         colorHex: String,
-        iconName: String
+        iconName: String,
+        includeInTotal: Boolean,
+        includeInAnalytics: Boolean
     ) -> Unit
 ) {
     var name by remember { mutableStateOf(initialAccount?.name ?: "") }
@@ -48,6 +50,8 @@ fun AddEditAccountDialog(
     var selectedCurrency by remember { mutableStateOf(initialAccount?.currency ?: "RUB") }
     var selectedColor by remember { mutableStateOf(initialAccount?.colorHex ?: "#3B82F6") }
     var selectedIcon by remember { mutableStateOf(initialAccount?.iconName ?: "credit_card") }
+    var includeInTotal by remember { mutableStateOf(initialAccount?.includeInTotal ?: true) }
+    var includeInAnalytics by remember { mutableStateOf(initialAccount?.includeInAnalytics ?: true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val accountTypes = listOf(
@@ -251,6 +255,48 @@ fun AddEditAccountDialog(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Включить в общий баланс", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Учитывать средства в общей сумме капитала",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = includeInTotal,
+                        onCheckedChange = { includeInTotal = it }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Учитывать в аналитике", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "В доходах и расходах (отключите для копилок)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = includeInAnalytics,
+                        onCheckedChange = { includeInAnalytics = it }
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Buttons
@@ -273,7 +319,7 @@ fun AddEditAccountDialog(
                                 return@Button
                             }
                             val bal = balanceText.toDoubleOrNull() ?: 0.0
-                            onSave(name.trim(), selectedType, bal, selectedCurrency, selectedColor, selectedIcon)
+                            onSave(name.trim(), selectedType, bal, selectedCurrency, selectedColor, selectedIcon, includeInTotal, includeInAnalytics)
                             onDismiss()
                         },
                         modifier = Modifier.weight(1.2f).height(48.dp).testTag("save_account_button"),

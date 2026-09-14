@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,11 +42,13 @@ import com.example.ui.viewmodel.FinanceUiState
 fun AccountsSettingsScreen(
     state: FinanceUiState,
     onAddAccountClick: () -> Unit,
+    onManageCategories: () -> Unit = {},
     onEditAccount: (AccountEntity) -> Unit,
     onArchiveAccount: (AccountEntity) -> Unit,
     onDeleteAccount: (AccountEntity) -> Unit,
     onCurrencyChange: (String) -> Unit,
     onClearAllData: (keepAccountStructure: Boolean) -> Unit = {},
+    onRestoreDemoData: () -> Unit = {},
     onTogglePushNotifications: (Boolean) -> Unit = {},
     onSendTestPush: () -> Unit = {},
     onOpenBankSync: () -> Unit,
@@ -549,99 +552,10 @@ fun AccountsSettingsScreen(
             // 5. Data Management (Export & Reset)
             item {
                 Text(
-                    text = "Автоматизация и пуш-уведомления",
+                    text = "Управление данными",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Push Notification toggle card
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier.fillMaxWidth().testTag("push_notifications_settings_card")
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (state.isPushNotificationsEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = "Пуш-уведомления",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                    Text(
-                                        text = if (state.isPushNotificationsEnabled) "Включены: напоминать о тратах" else "Отключены",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Switch(
-                                checked = state.isPushNotificationsEnabled,
-                                onCheckedChange = onTogglePushNotifications,
-                                modifier = Modifier.testTag("push_notifications_toggle_switch")
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Когда приложение работает в фоне и вы совершаете покупку по карте, Мани-мани пришлёт пуш с напоминанием внести операцию без долгих поисков.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        if (state.isPushNotificationsEnabled) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            OutlinedButton(
-                                onClick = onSendTestPush,
-                                modifier = Modifier.fillMaxWidth().testTag("send_test_push_button"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Отправить тестовое пуш-уведомление", fontSize = 13.sp)
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = onOpenBankSync,
-                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("settings_bank_sync_button"),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Sync, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Синхронизация с банками (Пуши / Чек)", fontWeight = FontWeight.SemiBold)
-                }
-
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedButton(
@@ -670,6 +584,22 @@ fun AccountsSettingsScreen(
                     Icon(Icons.Default.DeleteSweep, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Очистить все данные", fontWeight = FontWeight.SemiBold)
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { 
+                        onRestoreDemoData() 
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(androidx.compose.material.icons.Icons.Default.Restore, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Восстановить демо-данные", fontWeight = FontWeight.SemiBold)
                 }
             }
 

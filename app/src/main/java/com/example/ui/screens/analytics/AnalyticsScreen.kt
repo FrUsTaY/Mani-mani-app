@@ -61,6 +61,8 @@ fun AnalyticsScreen(
 
     val accountsMap = remember(state.accounts) { state.accounts.associateBy { it.id } }
     val categoriesMap = remember(state.categories) { state.categories.associateBy { it.id } }
+    val goalsMap = remember(state.goals) { state.goals.associateBy { it.id } }
+    val debtsMap = remember(state.debts) { state.debts.associateBy { it.id } }
 
     // Today label formatted like in Zen-money: "13 сен"
     val todayLabel = remember {
@@ -142,26 +144,59 @@ fun AnalyticsScreen(
             it.timestamp in startTime..endTime && !it.excludeFromStats
         }
 
-        val inc = txs.filter { it.type == "INCOME" }.sumOf { tx ->
+        val inc = txs.sumOf { tx ->
             val acc = state.accounts.find { it.id == tx.accountId }
-            CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            val toAcc = state.accounts.find { it.id == tx.toAccountId }
+            val accInAnalytics = acc?.includeInAnalytics ?: true
+            val toAccInAnalytics = toAcc?.includeInAnalytics ?: true
+
+            val convertedAmount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+
+            if (tx.type == "INCOME" && accInAnalytics) {
+                convertedAmount
+            } else if (tx.type == "TRANSFER" && !accInAnalytics && toAccInAnalytics) {
+                convertedAmount
+            } else {
+                0.0
+            }
         }
-        val exp = txs.filter { it.type == "EXPENSE" }.sumOf { tx ->
+        val exp = txs.sumOf { tx ->
             val acc = state.accounts.find { it.id == tx.accountId }
-            CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            val toAcc = state.accounts.find { it.id == tx.toAccountId }
+            val accInAnalytics = acc?.includeInAnalytics ?: true
+            val toAccInAnalytics = toAcc?.includeInAnalytics ?: true
+            
+            val convertedAmount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+
+            if (tx.type == "EXPENSE" && accInAnalytics) {
+                convertedAmount
+            } else if (tx.type == "TRANSFER" && accInAnalytics && !toAccInAnalytics) {
+                convertedAmount
+            } else {
+                0.0
+            }
         }
 
         val catMap = state.categories.associateBy { it.id }
         val spendMap = mutableMapOf<Long, Double>()
-        txs.filter { it.type == "EXPENSE" }.forEach { tx ->
-            val catId = tx.categoryId ?: -1L
+        txs.forEach { tx ->
             val acc = state.accounts.find { it.id == tx.accountId }
-            val amount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
-            spendMap[catId] = (spendMap[catId] ?: 0.0) + amount
+            val toAcc = state.accounts.find { it.id == tx.toAccountId }
+            val accInAnalytics = acc?.includeInAnalytics ?: true
+            val toAccInAnalytics = toAcc?.includeInAnalytics ?: true
+            val convertedAmount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            
+            val isExpense = tx.type == "EXPENSE" && accInAnalytics
+            val isTransferOut = tx.type == "TRANSFER" && accInAnalytics && !toAccInAnalytics
+
+            if (isExpense || isTransferOut) {
+                val catId = tx.categoryId ?: -1L
+                spendMap[catId] = (spendMap[catId] ?: 0.0) + convertedAmount
+            }
         }
 
         val spendings = spendMap.mapNotNull { (catId, amount) ->
-            val cat = catMap[catId] ?: return@mapNotNull null
+            val cat = catMap[catId] ?: com.example.data.entity.CategoryEntity(id = -1L, name = "Переводы", iconName = "swap_horiz", colorHex = "#9E9E9E", type = "EXPENSE")
             val pct = if (exp > 0) (amount / exp).toFloat() else 0f
             CategorySpending(cat, amount, pct)
         }.sortedByDescending { it.totalAmount }
@@ -175,10 +210,22 @@ fun AnalyticsScreen(
         val prevStart = now - (2 * thirtyDaysMs)
         val prevEnd = now - thirtyDaysMs
         state.transactions.filter {
-            it.timestamp in prevStart..prevEnd && it.type == "EXPENSE" && !it.excludeFromStats
+            it.timestamp in prevStart..prevEnd && !it.excludeFromStats
         }.sumOf { tx ->
             val acc = state.accounts.find { it.id == tx.accountId }
-            CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            val toAcc = state.accounts.find { it.id == tx.toAccountId }
+            val accInAnalytics = acc?.includeInAnalytics ?: true
+            val toAccInAnalytics = toAcc?.includeInAnalytics ?: true
+            
+            val convertedAmount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+
+            if (tx.type == "EXPENSE" && accInAnalytics) {
+                convertedAmount
+            } else if (tx.type == "TRANSFER" && accInAnalytics && !toAccInAnalytics) {
+                convertedAmount
+            } else {
+                0.0
+            }
         }
     }
 
@@ -187,7 +234,7 @@ fun AnalyticsScreen(
     val remainingPlanned = if (totalBudgetLimits > 0) {
         (totalBudgetLimits - filteredExpense).coerceAtLeast(0.0)
     } else {
-        (filteredExpense * 0.45).coerceAtLeast(15000.0)
+        0.0
     }
 
     val forecastCeiling = (filteredExpense + remainingPlanned * 1.28).coerceAtLeast(filteredExpense * 1.2)
@@ -381,6 +428,8 @@ fun AnalyticsScreen(
             transactions = filteredTxs,
             accountsMap = accountsMap,
             categoriesMap = categoriesMap,
+            goalsMap = goalsMap,
+            debtsMap = debtsMap,
             onDismiss = { showIncomeExpenseSheet = false },
             onOpenGeminiAssistant = onOpenGeminiAssistant
         )
@@ -399,6 +448,8 @@ fun AnalyticsScreen(
             expenseTransactions = expenseTransactions,
             accountsMap = accountsMap,
             categoriesMap = categoriesMap,
+            goalsMap = goalsMap,
+            debtsMap = debtsMap,
             onDismiss = { showCategoryExpenseSheet = false }
         )
     }
@@ -416,6 +467,8 @@ fun AnalyticsScreen(
             currentTransactions = expenseTransactions,
             accountsMap = accountsMap,
             categoriesMap = categoriesMap,
+            goalsMap = goalsMap,
+            debtsMap = debtsMap,
             onDismiss = { showPeriodComparisonSheet = false }
         )
     }

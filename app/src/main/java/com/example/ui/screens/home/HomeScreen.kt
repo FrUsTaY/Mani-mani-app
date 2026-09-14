@@ -43,6 +43,7 @@ fun HomeScreen(
     state: FinanceUiState,
     onAddTransactionClick: () -> Unit,
     onAddAccountClick: () -> Unit,
+    onEditAccount: (AccountEntity) -> Unit = {},
     onViewAllTransactions: () -> Unit,
     onDeleteTransaction: (TransactionEntity) -> Unit,
     onEditTransaction: (TransactionEntity) -> Unit = {},
@@ -55,10 +56,13 @@ fun HomeScreen(
     onOpenMe2MeTransfer: () -> Unit = {},
     onOpenIncomeDistribution: () -> Unit = {},
     onBankOfTheMonthSelect: (String) -> Unit = {},
+    onOpenNotificationSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isBalanceHidden by remember { mutableStateOf(false) }
     val accountsMap = remember(state.accounts) { state.accounts.associateBy { it.id } }
+    val goalsMap = remember(state.goals) { state.goals.associateBy { it.id } }
+    val debtsMap = remember(state.debts) { state.debts.associateBy { it.id } }
     val categoriesMap = remember(state.categories) { state.categories.associateBy { it.id } }
 
     LazyColumn(
@@ -101,6 +105,17 @@ fun HomeScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onOpenNotificationSettings,
+                        modifier = Modifier.testTag("home_header_notification_settings_button")
+                    ) {
+                        Icon(
+                            Icons.Default.Notifications,
+                            contentDescription = "Уведомления и Ассистент",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
                     IconButton(
                         onClick = { onOpenGeminiAssistant(null) },
                         modifier = Modifier.testTag("home_header_gemini_button")
@@ -453,7 +468,8 @@ fun HomeScreen(
                         Surface(
                             modifier = Modifier
                                 .width(150.dp)
-                                .height(108.dp),
+                                .height(108.dp)
+                                .clickable { onEditAccount(acc) },
                             shape = RoundedCornerShape(18.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             border = androidx.compose.foundation.BorderStroke(1.dp, accColor.copy(alpha = 0.4f)),
@@ -630,6 +646,8 @@ fun HomeScreen(
                         transaction = tx,
                         accountsMap = accountsMap,
                         categoriesMap = categoriesMap,
+goalsMap = goalsMap,
+debtsMap = debtsMap,
                         onDelete = onDeleteTransaction,
                         onClick = { onEditTransaction(tx) }
                     )

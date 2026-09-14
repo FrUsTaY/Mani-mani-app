@@ -47,6 +47,8 @@ fun IncomeVsExpenseDetailSheet(
     transactions: List<TransactionEntity>,
     accountsMap: Map<Long, AccountEntity>,
     categoriesMap: Map<Long, CategoryEntity>,
+    goalsMap: Map<Long, com.example.data.entity.GoalEntity> = emptyMap(),
+    debtsMap: Map<Long, com.example.data.entity.DebtEntity> = emptyMap(),
     onDismiss: () -> Unit,
     onOpenGeminiAssistant: (AiPromptType) -> Unit,
     onDeleteTransaction: (TransactionEntity) -> Unit = {},
@@ -288,6 +290,8 @@ fun IncomeVsExpenseDetailSheet(
                             transaction = tx,
                             accountsMap = accountsMap,
                             categoriesMap = categoriesMap,
+goalsMap = goalsMap,
+debtsMap = debtsMap,
                             onDelete = onDeleteTransaction,
                             onClick = {
                                 onDismiss()
@@ -311,6 +315,8 @@ fun CategoryExpensesDetailSheet(
     expenseTransactions: List<TransactionEntity>,
     accountsMap: Map<Long, AccountEntity>,
     categoriesMap: Map<Long, CategoryEntity>,
+    goalsMap: Map<Long, com.example.data.entity.GoalEntity> = emptyMap(),
+    debtsMap: Map<Long, com.example.data.entity.DebtEntity> = emptyMap(),
     onDismiss: () -> Unit,
     onDeleteTransaction: (TransactionEntity) -> Unit = {},
     onEditTransaction: (TransactionEntity) -> Unit = {}
@@ -493,6 +499,8 @@ fun CategoryExpensesDetailSheet(
                                                     transaction = tx,
                                                     accountsMap = accountsMap,
                                                     categoriesMap = categoriesMap,
+goalsMap = goalsMap,
+debtsMap = debtsMap,
                                                     onDelete = onDeleteTransaction,
                                                     onClick = {
                                                         onDismiss()
@@ -523,6 +531,8 @@ fun PeriodComparisonDetailSheet(
     currentTransactions: List<TransactionEntity>,
     accountsMap: Map<Long, AccountEntity>,
     categoriesMap: Map<Long, CategoryEntity>,
+    goalsMap: Map<Long, com.example.data.entity.GoalEntity> = emptyMap(),
+    debtsMap: Map<Long, com.example.data.entity.DebtEntity> = emptyMap(),
     onDismiss: () -> Unit
 ) {
     val diff = currentExpense - prevExpense
@@ -647,6 +657,8 @@ fun PeriodComparisonDetailSheet(
                         transaction = tx,
                         accountsMap = accountsMap,
                         categoriesMap = categoriesMap,
+goalsMap = goalsMap,
+debtsMap = debtsMap,
                         onDelete = { }
                     )
                 }

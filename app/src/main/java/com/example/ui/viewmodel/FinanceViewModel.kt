@@ -35,6 +35,7 @@ data class FinanceUiState(
     val accounts: List<AccountEntity> = emptyList(),
     val categories: List<CategoryEntity> = emptyList(),
     val transactions: List<TransactionEntity> = emptyList(),
+    val plannedTransactions: List<PlannedTransactionEntity> = emptyList(),
     val budgets: List<BudgetEntity> = emptyList(),
     val goals: List<GoalEntity> = emptyList(),
     val debts: List<DebtEntity> = emptyList(),
@@ -65,6 +66,20 @@ data class FinanceUiState(
 )
 
 @Suppress("UNCHECKED_CAST")
+
+fun <T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, R> combine10(
+    flow1: Flow<T1>, flow2: Flow<T2>, flow3: Flow<T3>, flow4: Flow<T4>, flow5: Flow<T5>,
+    flow6: Flow<T6>, flow7: Flow<T7>, flow8: Flow<T8>, flow9: Flow<T9>, flow10: Flow<T10>,
+    transform: suspend (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) -> R
+): Flow<R> = kotlinx.coroutines.flow.combine(
+    flow1, flow2, flow3, flow4, flow5, flow6, flow7, flow8, flow9, flow10
+) { args: Array<*> ->
+    transform(
+        args[0] as T1, args[1] as T2, args[2] as T3, args[3] as T4, args[4] as T5,
+        args[5] as T6, args[6] as T7, args[7] as T8, args[8] as T9, args[9] as T10
+    )
+}
+
 fun <T1, T2, T3, T4, T5, T6, T7, T8, T9, R> combine9(
     flow1: Flow<T1>,
     flow2: Flow<T2>,
@@ -144,17 +159,18 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         repository = FinanceRepository(database)
     }
 
-    private val baseFinanceFlow = combine9(
+    private val baseFinanceFlow = combine10(
         repository.allAccounts,
         repository.allCategories,
         repository.allTransactions,
+        repository.allPlannedTransactions,
         repository.allBudgets,
         repository.allGoals,
         repository.allDebts,
         repository.unprocessedNotifications,
         appConfigFlow,
         _statusMessage
-    ) { accounts, categories, transactions, budgets, goals, debts, pendingNotifications, config, status ->
+    ) { accounts, categories, transactions, plannedTransactions, budgets, goals, debts, pendingNotifications, config, status ->
         // 1. Total Balance in base currency
         val activeAccounts = accounts.filter { !it.isArchived && it.includeInTotal }
         val totalBalance = activeAccounts.sumOf { acc ->
@@ -167,21 +183,39 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             it.timestamp >= paydayPeriod.startTime && it.timestamp <= paydayPeriod.endTime && !it.excludeFromStats
         }
 
-        val monthlyIncome = thisMonthTransactions
-            .filter { it.type == "INCOME" }
-            .sumOf { tx ->
-                val acc = accounts.find { it.id == tx.accountId }
-                val curr = acc?.currency ?: config.baseCurrency
-                CurrencyHelper.convert(tx.amount, curr, config.baseCurrency)
-            }
+        val monthlyIncome = thisMonthTransactions.sumOf { tx ->
+            val acc = accounts.find { it.id == tx.accountId }
+            val toAcc = accounts.find { it.id == tx.toAccountId }
+            val accInAnalytics = acc?.includeInAnalytics ?: true
+            val toAccInAnalytics = toAcc?.includeInAnalytics ?: true
+            
+            val convertedAmount = CurrencyHelper.convert(tx.amount, acc?.currency ?: config.baseCurrency, config.baseCurrency)
 
-        val monthlyExpense = thisMonthTransactions
-            .filter { it.type == "EXPENSE" }
-            .sumOf { tx ->
-                val acc = accounts.find { it.id == tx.accountId }
-                val curr = acc?.currency ?: config.baseCurrency
-                CurrencyHelper.convert(tx.amount, curr, config.baseCurrency)
+            if (tx.type == "INCOME" && accInAnalytics) {
+                convertedAmount
+            } else if (tx.type == "TRANSFER" && !accInAnalytics && toAccInAnalytics) {
+                convertedAmount
+            } else {
+                0.0
             }
+        }
+
+        val monthlyExpense = thisMonthTransactions.sumOf { tx ->
+            val acc = accounts.find { it.id == tx.accountId }
+            val toAcc = accounts.find { it.id == tx.toAccountId }
+            val accInAnalytics = acc?.includeInAnalytics ?: true
+            val toAccInAnalytics = toAcc?.includeInAnalytics ?: true
+            
+            val convertedAmount = CurrencyHelper.convert(tx.amount, acc?.currency ?: config.baseCurrency, config.baseCurrency)
+
+            if (tx.type == "EXPENSE" && accInAnalytics) {
+                convertedAmount
+            } else if (tx.type == "TRANSFER" && accInAnalytics && !toAccInAnalytics) {
+                convertedAmount
+            } else {
+                0.0
+            }
+        }
 
         // 3. Category spending breakdown
         val expenseTx = thisMonthTransactions.filter { it.type == "EXPENSE" }
@@ -235,6 +269,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             accounts = accounts,
             categories = categories,
             transactions = transactions,
+            plannedTransactions = plannedTransactions,
             budgets = budgets,
             goals = goals,
             debts = debts,
@@ -297,7 +332,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         timestamp: Long = System.currentTimeMillis(),
         note: String = "",
         tag: String = "",
-        excludeFromStats: Boolean = false
+        excludeFromStats: Boolean = false,
+        goalId: Long? = null,
+        debtId: Long? = null
     ) {
         viewModelScope.launch {
             repository.addTransaction(
@@ -310,7 +347,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     timestamp = timestamp,
                     note = note,
                     tag = tag,
-                    excludeFromStats = excludeFromStats
+                    excludeFromStats = excludeFromStats,
+                    goalId = goalId,
+                    debtId = debtId
                 )
             )
             _statusMessage.value = "Операция успешно добавлена"
@@ -333,6 +372,29 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             _statusMessage.value = "Операция успешно обновлена"
         }
     }
+    private val _isEveningSummaryEnabled = MutableStateFlow(userFinancePrefs.isEveningSummaryEnabled())
+    val isEveningSummaryEnabledFlow: StateFlow<Boolean> = _isEveningSummaryEnabled.asStateFlow()
+
+    private val _eveningSummaryTime = MutableStateFlow(userFinancePrefs.getEveningSummaryTime())
+    val eveningSummaryTimeFlow: StateFlow<String> = _eveningSummaryTime.asStateFlow()
+
+    fun isEveningSummaryEnabled(): Boolean {
+        return _isEveningSummaryEnabled.value
+    }
+
+    fun setEveningSummaryEnabled(enabled: Boolean) {
+        userFinancePrefs.setEveningSummaryEnabled(enabled)
+        _isEveningSummaryEnabled.value = enabled
+    }
+
+    fun getEveningSummaryTime(): String {
+        return _eveningSummaryTime.value
+    }
+
+    fun setEveningSummaryTime(time: String) {
+        userFinancePrefs.setEveningSummaryTime(time)
+        _eveningSummaryTime.value = time
+    }
 
     fun setPushNotificationsEnabled(enabled: Boolean) {
         userFinancePrefs.setPushNotificationsEnabled(enabled)
@@ -351,7 +413,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         initialBalance: Double,
         currency: String,
         colorHex: String,
-        iconName: String
+        iconName: String,
+        includeInTotal: Boolean,
+        includeInAnalytics: Boolean
     ) {
         viewModelScope.launch {
             repository.insertAccount(
@@ -361,7 +425,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     balance = initialBalance,
                     currency = currency,
                     colorHex = colorHex,
-                    iconName = iconName
+                    iconName = iconName,
+                    includeInTotal = includeInTotal,
+                    includeInAnalytics = includeInAnalytics
                 )
             )
             _statusMessage.value = "Счёт «$name» создан"
@@ -389,6 +455,18 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun updateCategory(category: com.example.data.entity.CategoryEntity) {
+        viewModelScope.launch {
+            repository.updateCategory(category)
+        }
+    }
+
+    fun deleteCategory(category: com.example.data.entity.CategoryEntity) {
+        viewModelScope.launch {
+            repository.deleteCategory(category)
+        }
+    }
+
     fun addCategory(name: String, type: String, iconName: String, colorHex: String) {
         viewModelScope.launch {
             repository.insertCategory(
@@ -405,13 +483,18 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     fun addBudget(categoryId: Long?, limitAmount: Double) {
         viewModelScope.launch {
-            repository.insertBudget(
-                BudgetEntity(
-                    categoryId = categoryId,
-                    limitAmount = limitAmount,
-                    periodMonth = "DEFAULT"
+            val existing = uiState.value.budgets.find { it.categoryId == categoryId && it.periodMonth == "DEFAULT" }
+            if (existing != null) {
+                repository.insertBudget(existing.copy(limitAmount = limitAmount))
+            } else {
+                repository.insertBudget(
+                    BudgetEntity(
+                        categoryId = categoryId,
+                        limitAmount = limitAmount,
+                        periodMonth = "DEFAULT"
+                    )
                 )
-            )
+            }
             _statusMessage.value = "Лимит бюджета установлен"
         }
     }
@@ -660,28 +743,91 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     fun executeIncomeDistribution(
         sourceAccountId: Long,
-        allocations: List<Pair<Long, Double>>,
+        allocations: List<com.example.ui.components.AllocationItemData>,
         notePrefix: String = "Распределение средств"
     ) {
         viewModelScope.launch {
             var count = 0
             val now = System.currentTimeMillis()
-            allocations.filter { it.second > 0 && it.first != sourceAccountId }.forEach { (targetAccId, amount) ->
-                repository.addTransaction(
-                    TransactionEntity(
-                        type = "TRANSFER",
-                        amount = amount,
-                        accountId = sourceAccountId,
-                        toAccountId = targetAccId,
-                        timestamp = now + (count * 200),
-                        note = "$notePrefix",
-                        tag = "распределение,шлюз,me2me",
-                        excludeFromStats = false
-                    )
-                )
-                count++
+            allocations.filter { it.amount > 0 }.forEach { alloc ->
+                when (alloc.type) {
+                    com.example.ui.components.AllocationTargetType.ACCOUNT -> {
+                        if (alloc.targetId != sourceAccountId) {
+                            repository.addTransaction(
+                                TransactionEntity(
+                                    type = "TRANSFER",
+                                    amount = alloc.amount,
+                                    accountId = sourceAccountId,
+                                    toAccountId = alloc.targetId,
+                                    timestamp = now + (count * 200),
+                                    note = "$notePrefix",
+                                    tag = "распределение,шлюз,me2me",
+                                    excludeFromStats = false
+                                )
+                            )
+                            count++
+                        }
+                    }
+                    com.example.ui.components.AllocationTargetType.CATEGORY -> {
+                        repository.addTransaction(
+                            TransactionEntity(
+                                type = "EXPENSE",
+                                amount = alloc.amount,
+                                accountId = sourceAccountId,
+                                categoryId = alloc.targetId,
+                                timestamp = now + (count * 200),
+                                note = "$notePrefix",
+                                tag = "распределение,шлюз,категория",
+                                excludeFromStats = false
+                            )
+                        )
+                        count++
+                    }
+                    com.example.ui.components.AllocationTargetType.GOAL -> {
+                        // Goals might just be tracked via expenses or transfers, but let's just make it a transfer to the first savings account or an expense.
+                        // Actually, ZenMoney doesn't have a transaction type 'GOAL'. But wait, Mani-mani Goals are tracking progress.
+                        // For now, let's just create an EXPENSE to a dummy savings category, or a special type. 
+                        // Wait, "Goal" in ManiMani is just a GoalEntity. We might need to just update the Goal's currentAmount.
+                        // But wait, where does the money go? It stays in the account unless transferred.
+                        // If they distribute to a Goal, they might want to just increase the Goal progress and deduct from the source account.
+                        // Let's create an EXPENSE transaction without a category, but with a note, and update the Goal progress.
+                        repository.addTransaction(
+                            TransactionEntity(
+                                type = "EXPENSE",
+                                amount = alloc.amount,
+                                accountId = sourceAccountId,
+                                timestamp = now + (count * 200),
+                                note = "$notePrefix (Копилка/Цель)",
+                                tag = "распределение,шлюз,цель",
+                                excludeFromStats = false
+                            )
+                        )
+                        // Also update goal
+                        repository.contributeToGoal(alloc.targetId, alloc.amount)
+                        count++
+                    }
+                    com.example.ui.components.AllocationTargetType.DEBT -> {
+                        repository.addTransaction(
+                            TransactionEntity(
+                                type = "EXPENSE",
+                                amount = alloc.amount,
+                                accountId = sourceAccountId,
+                                timestamp = now + (count * 200),
+                                note = "$notePrefix (Погашение долга/кредита)",
+                                tag = "распределение,шлюз,долг",
+                                excludeFromStats = false
+                            )
+                        )
+                        val debt = uiState.value.debts.find { it.id == alloc.targetId }
+                        if (debt != null) {
+                            val newAmount = (debt.amount - alloc.amount).coerceAtLeast(0.0)
+                            repository.updateDebt(debt.copy(amount = newAmount, isSettled = newAmount == 0.0))
+                        }
+                        count++
+                    }
+                }
             }
-            _statusMessage.value = "Успешно создано $count переводов для распределения"
+            _statusMessage.value = "Успешно создано $count операций распределения"
         }
     }
 
@@ -750,6 +896,24 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 val isKeyMissing = errorMsg.contains("не настроен", ignoreCase = true)
                 _aiState.value = AiState.Error(errorMsg, isApiKeyMissing = isKeyMissing)
             }
+        }
+    }
+    // Planned Transactions
+    fun addPlannedTransaction(transaction: PlannedTransactionEntity) {
+        viewModelScope.launch {
+            repository.insertPlannedTransaction(transaction)
+        }
+    }
+
+    fun updatePlannedTransaction(transaction: PlannedTransactionEntity) {
+        viewModelScope.launch {
+            repository.updatePlannedTransaction(transaction)
+        }
+    }
+
+    fun deletePlannedTransaction(transaction: PlannedTransactionEntity) {
+        viewModelScope.launch {
+            repository.deletePlannedTransaction(transaction)
         }
     }
 }

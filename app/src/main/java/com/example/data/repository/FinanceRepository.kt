@@ -13,6 +13,7 @@ class FinanceRepository(private val db: AppDatabase) {
     private val goalDao = db.goalDao()
     private val debtDao = db.debtDao()
     private val pendingNotificationDao = db.pendingNotificationDao()
+    private val plannedTransactionDao = db.plannedTransactionDao()
 
     // Pending Bank Notifications
     val unprocessedNotifications: Flow<List<PendingNotificationEntity>> = pendingNotificationDao.getUnprocessedNotifications()
@@ -52,6 +53,7 @@ class FinanceRepository(private val db: AppDatabase) {
 
     suspend fun addTransaction(transaction: TransactionEntity): Long {
         val id = transactionDao.insertTransaction(transaction)
+        
         // Update account balances automatically
         when (transaction.type) {
             "EXPENSE" -> {
@@ -67,6 +69,30 @@ class FinanceRepository(private val db: AppDatabase) {
                 }
             }
         }
+        
+        // Handle Goal funding (typically a TRANSFER, but we check if goalId is present)
+        transaction.goalId?.let { goalId ->
+            val goal = goalDao.getGoalById(goalId)
+            if (goal != null) {
+                // If it's a transfer, we added to it. (Or expense)
+                val sign = if (transaction.type == "INCOME") -1 else 1 
+                goalDao.updateGoal(goal.copy(currentAmount = goal.currentAmount + (transaction.amount * sign)))
+            }
+        }
+        
+        // Handle Debt repayment
+        transaction.debtId?.let { debtId ->
+            val debt = debtDao.getDebtById(debtId)
+            if (debt != null) {
+                // If I'm paying a debt (EXPENSE), amount owed decreases
+                // If I'm receiving a debt payment (INCOME), amount owed to me decreases
+                // Basically, debt amount reduces by transaction.amount
+                val newAmount = (debt.amount - transaction.amount).coerceAtLeast(0.0)
+                val isSettled = newAmount <= 0.0
+                debtDao.updateDebt(debt.copy(amount = newAmount, isSettled = isSettled))
+            }
+        }
+        
         return id
     }
 
@@ -86,6 +112,23 @@ class FinanceRepository(private val db: AppDatabase) {
                 }
             }
         }
+        
+        transaction.goalId?.let { goalId ->
+            val goal = goalDao.getGoalById(goalId)
+            if (goal != null) {
+                val sign = if (transaction.type == "INCOME") -1 else 1
+                goalDao.updateGoal(goal.copy(currentAmount = goal.currentAmount - (transaction.amount * sign)))
+            }
+        }
+        
+        transaction.debtId?.let { debtId ->
+            val debt = debtDao.getDebtById(debtId)
+            if (debt != null) {
+                val newAmount = debt.amount + transaction.amount
+                debtDao.updateDebt(debt.copy(amount = newAmount, isSettled = false))
+            }
+        }
+        
         transactionDao.deleteTransaction(transaction)
     }
 
@@ -172,4 +215,11 @@ class FinanceRepository(private val db: AppDatabase) {
     suspend fun resetData() {
         AppDatabase.prepopulateDatabase(db)
     }
+
+    // Planned Transactions
+    val allPlannedTransactions: Flow<List<PlannedTransactionEntity>> = plannedTransactionDao.getAllPlannedTransactions()
+
+    suspend fun insertPlannedTransaction(transaction: PlannedTransactionEntity): Long = plannedTransactionDao.insertPlannedTransaction(transaction)
+    suspend fun updatePlannedTransaction(transaction: PlannedTransactionEntity) = plannedTransactionDao.updatePlannedTransaction(transaction)
+    suspend fun deletePlannedTransaction(transaction: PlannedTransactionEntity) = plannedTransactionDao.deletePlannedTransaction(transaction)
 }

@@ -59,9 +59,11 @@ fun ManiManiApp(
     var showAddAccountDialog by remember { mutableStateOf(false) }
     var showBankSyncScreen by remember { mutableStateOf(false) }
     var showGeminiAssistantScreen by remember { mutableStateOf(false) }
+    var showNotificationSettingsScreen by remember { mutableStateOf(false) }
     var showPaydaySettingsDialog by remember { mutableStateOf(false) }
     var showMe2MeTransferDialog by remember { mutableStateOf(false) }
     var showIncomeDistributionDialog by remember { mutableStateOf(false) }
+    var showManageCategoriesDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -86,7 +88,7 @@ fun ManiManiApp(
         contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (!showBankSyncScreen && !showGeminiAssistantScreen) {
+            if (!showBankSyncScreen && !showGeminiAssistantScreen && !showNotificationSettingsScreen) {
                 NavigationBar(
                     windowInsets = WindowInsets.navigationBars,
                     modifier = Modifier.testTag("bottom_nav_bar")
@@ -117,7 +119,7 @@ fun ManiManiApp(
         floatingActionButton = {
             // FAB displayed on Home and History tabs for fast access
             AnimatedVisibility(
-                visible = !showBankSyncScreen && !showGeminiAssistantScreen && (currentTab == ManiManiNavTab.HOME || currentTab == ManiManiNavTab.HISTORY),
+                visible = !showBankSyncScreen && !showGeminiAssistantScreen && !showNotificationSettingsScreen && (currentTab == ManiManiNavTab.HOME || currentTab == ManiManiNavTab.HISTORY),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
@@ -150,6 +152,23 @@ fun ManiManiApp(
                     onSaveApiKey = { viewModel.saveGeminiApiKey(it) },
                     onTestApiKey = { key, callback -> viewModel.testGeminiApiKey(key, callback) }
                 )
+            } else if (showNotificationSettingsScreen) {
+                val isEveningSummaryEnabled by viewModel.isEveningSummaryEnabledFlow.collectAsStateWithLifecycle()
+                val eveningSummaryTime by viewModel.eveningSummaryTimeFlow.collectAsStateWithLifecycle()
+                com.example.ui.screens.NotificationSettingsScreen(
+                    state = state,
+                    onBack = { showNotificationSettingsScreen = false },
+                    onTogglePushNotifications = { viewModel.setPushNotificationsEnabled(it) },
+                    onSendTestPush = { viewModel.sendTestPushNotification() },
+                    onOpenBankSync = {
+                        showNotificationSettingsScreen = false
+                        showBankSyncScreen = true
+                    },
+                    isEveningSummaryEnabled = isEveningSummaryEnabled,
+                    onToggleEveningSummary = { viewModel.setEveningSummaryEnabled(it) },
+                    eveningSummaryTime = eveningSummaryTime,
+                    onSetEveningSummaryTime = { viewModel.setEveningSummaryTime(it) }
+                )
             } else if (showBankSyncScreen) {
                 BankSyncScreen(
                     state = state,
@@ -172,11 +191,13 @@ fun ManiManiApp(
                         state = state,
                         onAddTransactionClick = { showAddTransactionDialog = true },
                         onAddAccountClick = { showAddAccountDialog = true },
+                        onEditAccount = { accountToEdit = it },
                         onViewAllTransactions = { currentTab = ManiManiNavTab.HISTORY },
                         onDeleteTransaction = { viewModel.deleteTransaction(it) },
                         onEditTransaction = { transactionToEdit = it },
                         onCurrencyChange = { viewModel.setBaseCurrency(it) },
                         onOpenBankSync = { showBankSyncScreen = true },
+                        onOpenNotificationSettings = { showNotificationSettingsScreen = true },
                         onConfirmNotification = { notif, accId, catId ->
                             viewModel.confirmPendingNotification(notif, accId, catId)
                         },
@@ -227,6 +248,17 @@ fun ManiManiApp(
                         onAddDebt = { person, amt, isOwed, note -> viewModel.addDebt(person, amt, isOwed, note) },
                         onToggleDebt = { viewModel.toggleDebtSettled(it) },
                         onDeleteDebt = { viewModel.deleteDebt(it) },
+                        onAddPlannedTransaction = { viewModel.addPlannedTransaction(it) },
+                        onUpdatePlannedTransaction = { viewModel.updatePlannedTransaction(it) },
+                        onDeletePlannedTransaction = { viewModel.deletePlannedTransaction(it) },
+                        onAddTransaction = { viewModel.addTransaction(
+                            type = it.type,
+                            amount = it.amount,
+                            accountId = it.accountId,
+                            categoryId = it.categoryId,
+                            note = it.note,
+                            excludeFromStats = it.excludeFromStats
+                        ) },
                         onOpenGeminiAssistant = { promptType ->
                             viewModel.askGemini(promptType)
                             showGeminiAssistantScreen = true
@@ -237,11 +269,13 @@ fun ManiManiApp(
                     ManiManiNavTab.ACCOUNTS -> AccountsSettingsScreen(
                         state = state,
                         onAddAccountClick = { showAddAccountDialog = true },
+                        onManageCategories = { showManageCategoriesDialog = true },
                         onEditAccount = { accountToEdit = it },
                         onArchiveAccount = { viewModel.archiveAccount(it) },
                         onDeleteAccount = { viewModel.deleteAccount(it) },
                         onCurrencyChange = { viewModel.setBaseCurrency(it) },
                         onClearAllData = { keepAccounts -> viewModel.clearAllData(keepAccounts) },
+                        onRestoreDemoData = { viewModel.resetToDemoData() },
                         onTogglePushNotifications = { viewModel.setPushNotificationsEnabled(it) },
                         onSendTestPush = { viewModel.sendTestPushNotification() },
                         onOpenBankSync = { showBankSyncScreen = true },
@@ -266,9 +300,12 @@ fun ManiManiApp(
         AddTransactionDialog(
             accounts = state.accounts,
             categories = state.categories,
+            goals = state.goals,
+            debts = state.debts,
             bankOfTheMonth = state.bankOfTheMonth,
             onDismiss = { showAddTransactionDialog = false },
-            onConfirm = { type, amount, accId, toAccId, catId, note, tag, exclude ->
+            onManageCategories = { showManageCategoriesDialog = true },
+            onConfirm = { type, amount, accId, toAccId, catId, note, tag, exclude, goalId, debtId ->
                 viewModel.addTransaction(
                     type = type,
                     amount = amount,
@@ -277,7 +314,9 @@ fun ManiManiApp(
                     categoryId = catId,
                     note = note,
                     tag = tag,
-                    excludeFromStats = exclude
+                    excludeFromStats = exclude,
+                    goalId = goalId,
+                    debtId = debtId
                 )
             }
         )
@@ -288,10 +327,13 @@ fun ManiManiApp(
         AddTransactionDialog(
             accounts = state.accounts,
             categories = state.categories,
+            goals = state.goals,
+            debts = state.debts,
             bankOfTheMonth = state.bankOfTheMonth,
             transactionToEdit = txToEdit,
             onDismiss = { transactionToEdit = null },
-            onConfirm = { type, amount, accId, toAccId, catId, note, tag, exclude ->
+            onManageCategories = { showManageCategoriesDialog = true },
+            onConfirm = { type, amount, accId, toAccId, catId, note, tag, exclude, goalId, debtId ->
                 val updated = txToEdit.copy(
                     type = type,
                     amount = amount,
@@ -300,7 +342,9 @@ fun ManiManiApp(
                     categoryId = catId,
                     note = note,
                     tag = tag,
-                    excludeFromStats = exclude
+                    excludeFromStats = exclude,
+                    goalId = goalId,
+                    debtId = debtId
                 )
                 viewModel.updateTransaction(txToEdit, updated)
                 transactionToEdit = null
@@ -333,10 +377,30 @@ fun ManiManiApp(
     }
 
     // Income Distribution Hub Dialog (e.g. cash deposit / wife's salary)
+
+    if (showManageCategoriesDialog) {
+        com.example.ui.components.ManageCategoriesDialog(
+            categories = state.categories,
+            onDismiss = { showManageCategoriesDialog = false },
+            onAddCategory = { name, type, iconName, colorHex ->
+                viewModel.addCategory(name, type, iconName, colorHex)
+            },
+            onUpdateCategory = { viewModel.updateCategory(it) },
+            onDeleteCategory = { viewModel.deleteCategory(it) }
+        )
+    }
     if (showIncomeDistributionDialog) {
         IncomeDistributionDialog(
             accounts = state.accounts,
+            categories = state.categories,
+            goals = state.goals,
+            debts = state.debts,
             onDismiss = { showIncomeDistributionDialog = false },
+            onAddCategory = { name, type, iconName, colorHex ->
+                viewModel.addCategory(name, type, iconName, colorHex)
+            },
+            onUpdateCategory = { viewModel.updateCategory(it) },
+            onDeleteCategory = { viewModel.deleteCategory(it) },
             onConfirm = { sourceAccountId, allocations ->
                 viewModel.executeIncomeDistribution(sourceAccountId, allocations)
                 showIncomeDistributionDialog = false
@@ -349,8 +413,8 @@ fun ManiManiApp(
         AddEditAccountDialog(
             initialAccount = null,
             onDismiss = { showAddAccountDialog = false },
-            onSave = { name, type, balance, currency, colorHex, iconName ->
-                viewModel.addAccount(name, type, balance, currency, colorHex, iconName)
+            onSave = { name, type, balance, currency, colorHex, iconName, includeInTotal, includeInAnalytics ->
+                viewModel.addAccount(name, type, balance, currency, colorHex, iconName, includeInTotal, includeInAnalytics)
             }
         )
     }
@@ -360,7 +424,7 @@ fun ManiManiApp(
         AddEditAccountDialog(
             initialAccount = acc,
             onDismiss = { accountToEdit = null },
-            onSave = { name, type, balance, currency, colorHex, iconName ->
+            onSave = { name, type, balance, currency, colorHex, iconName, includeInTotal, includeInAnalytics ->
                 viewModel.updateAccount(
                     acc.copy(
                         name = name,
@@ -368,7 +432,9 @@ fun ManiManiApp(
                         balance = balance,
                         currency = currency,
                         colorHex = colorHex,
-                        iconName = iconName
+                        iconName = iconName,
+                        includeInTotal = includeInTotal,
+                        includeInAnalytics = includeInAnalytics
                     )
                 )
                 accountToEdit = null

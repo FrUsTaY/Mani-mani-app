@@ -31,6 +31,8 @@ class UserFinancePreferences(context: Context) {
         private const val KEY_LAST_DISTRIBUTION_AMOUNT = "last_distribution_amount"
         private const val KEY_PUSH_NOTIFICATIONS_ENABLED = "push_notifications_enabled"
         private const val KEY_THEME_MODE = "app_theme_mode"
+        const val KEY_EVENING_SUMMARY_ENABLED = "evening_summary_enabled"
+        const val KEY_EVENING_SUMMARY_TIME = "evening_summary_time"
 
         const val BANK_VTB = "VTB"
         const val BANK_YANDEX = "YANDEX"
@@ -55,6 +57,22 @@ class UserFinancePreferences(context: Context) {
 
     fun setPushNotificationsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_PUSH_NOTIFICATIONS_ENABLED, enabled).apply()
+    }
+
+    fun isEveningSummaryEnabled(): Boolean {
+        return prefs.getBoolean(KEY_EVENING_SUMMARY_ENABLED, false)
+    }
+
+    fun setEveningSummaryEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_EVENING_SUMMARY_ENABLED, enabled).apply()
+    }
+
+    fun getEveningSummaryTime(): String {
+        return prefs.getString(KEY_EVENING_SUMMARY_TIME, "21:00") ?: "21:00"
+    }
+
+    fun setEveningSummaryTime(time: String) {
+        prefs.edit().putString(KEY_EVENING_SUMMARY_TIME, time).apply()
     }
 
     fun getPaydayDay(): Int {
