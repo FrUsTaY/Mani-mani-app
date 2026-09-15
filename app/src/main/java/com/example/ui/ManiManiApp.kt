@@ -213,7 +213,8 @@ fun ManiManiApp(
                         onOpenPaydaySettings = { showPaydaySettingsDialog = true },
                         onOpenMe2MeTransfer = { showMe2MeTransferDialog = true },
                         onOpenIncomeDistribution = { showIncomeDistributionDialog = true },
-                        onBankOfTheMonthSelect = { viewModel.setBankOfTheMonth(it) }
+                        onBankOfTheMonthSelect = { viewModel.setBankOfTheMonth(it) },
+                        onUpdateAccountsOrder = { viewModel.updateAccountsOrder(it) }
                     )
 
                     ManiManiNavTab.HISTORY -> TransactionsScreen(

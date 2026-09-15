@@ -38,6 +38,7 @@ class FinanceRepository(private val db: AppDatabase) {
     suspend fun getAccountById(id: Long) = accountDao.getAccountById(id)
     suspend fun insertAccount(account: AccountEntity) = accountDao.insertAccount(account)
     suspend fun updateAccount(account: AccountEntity) = accountDao.updateAccount(account)
+    suspend fun updateAccounts(accounts: List<AccountEntity>) = accountDao.updateAccounts(accounts)
     suspend fun deleteAccount(account: AccountEntity) = accountDao.deleteAccount(account)
 
     // Categories

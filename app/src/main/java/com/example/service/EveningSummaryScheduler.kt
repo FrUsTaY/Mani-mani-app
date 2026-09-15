@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 object EveningSummaryScheduler {
     private const val WORK_NAME = "EveningSummaryWork"
 
-    fun schedule(context: Context, timeString: String) {
+    fun schedule(context: Context, timeString: String, forceUpdate: Boolean = false) {
         val parts = timeString.split(":")
         if (parts.size != 2) return
         val hour = parts[0].toIntOrNull() ?: 21
@@ -34,9 +34,11 @@ object EveningSummaryScheduler {
             .setInitialDelay(timeDiff, TimeUnit.MILLISECONDS)
             .build()
 
+        val policy = if (forceUpdate) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
+
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            policy,
             workRequest
         )
     }

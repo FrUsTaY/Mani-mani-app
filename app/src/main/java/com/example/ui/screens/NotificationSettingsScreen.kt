@@ -180,12 +180,12 @@ fun NotificationSettingsScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        text = "Перехват пушей",
+                                        text = "Пуш-напоминания об операциях",
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.titleSmall
                                     )
                                     Text(
-                                        text = if (state.isPushNotificationsEnabled) "Включен" else "Отключен",
+                                        text = if (state.isPushNotificationsEnabled) "Включены" else "Отключены",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -199,7 +199,7 @@ fun NotificationSettingsScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Автоматически сохранять транзакции из пуш-уведомлений банков.",
+                            text = "Присылать пуш-уведомление от Мани-мани при покупках в банках для быстрого подтверждения и записи в бюджет.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -228,7 +228,7 @@ fun NotificationSettingsScreen(
                 ) {
                     Icon(Icons.Default.Sync, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Настроить доступ к уведомлениям", fontWeight = FontWeight.SemiBold)
+                    Text("Служба перехвата банков (Android)", fontWeight = FontWeight.SemiBold)
                 }
             }
         }

@@ -120,7 +120,7 @@ fun ZenPlansMainView(
     val now = System.currentTimeMillis()
     val isCurrentCycle = cycleOffset == 0
 
-    // Filter transactions in this cycle
+    // Filter transactions in this cycle for analytical spending / category budgets
     val cycleTransactions = remember(state.transactions, period.startTime, period.endTime) {
         state.transactions.filter {
             it.timestamp in period.startTime..period.endTime && !it.excludeFromStats
@@ -130,14 +130,24 @@ fun ZenPlansMainView(
     val spentSoFar = remember(cycleTransactions, state.accounts, state.baseCurrency) {
         cycleTransactions.filter { it.type == "EXPENSE" }.sumOf { tx ->
             val acc = state.accounts.find { it.id == tx.accountId }
-            CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            val inAnalytics = acc?.includeInAnalytics ?: true
+            if (inAnalytics) {
+                CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            } else {
+                0.0
+            }
         }
     }
 
     val incomeSoFar = remember(cycleTransactions, state.accounts, state.baseCurrency) {
         cycleTransactions.filter { it.type == "INCOME" }.sumOf { tx ->
             val acc = state.accounts.find { it.id == tx.accountId }
-            CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            val inAnalytics = acc?.includeInAnalytics ?: true
+            if (inAnalytics) {
+                CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+            } else {
+                0.0
+            }
         }
     }
 
@@ -147,8 +157,11 @@ fun ZenPlansMainView(
         cycleTransactions.filter { it.type == "EXPENSE" }.forEach { tx ->
             val catId = tx.categoryId ?: -1L
             val acc = state.accounts.find { it.id == tx.accountId }
-            val amount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
-            map[catId] = (map[catId] ?: 0.0) + amount
+            val inAnalytics = acc?.includeInAnalytics ?: true
+            if (inAnalytics) {
+                val amount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+                map[catId] = (map[catId] ?: 0.0) + amount
+            }
         }
         map
     }
@@ -177,9 +190,45 @@ fun ZenPlansMainView(
     }
     val remainingPlannedExpenses = remainingCategoryBudgets + remainingPlannedPayments
 
+    // Calculate the actual net balance change of all included accounts during this cycle
+    // to accurately reconstruct the baseline starting balance on the cycle start date.
+    val netTotalBalanceChangeInCycle = remember(state.transactions, state.accounts, state.baseCurrency, period.startTime, period.endTime) {
+        val cycleAllTx = state.transactions.filter { it.timestamp in period.startTime..period.endTime }
+        var change = 0.0
+        for (tx in cycleAllTx) {
+            val acc = state.accounts.find { it.id == tx.accountId }
+            val toAcc = state.accounts.find { it.id == tx.toAccountId }
+            val accInTotal = (acc?.includeInTotal == true && !acc.isArchived)
+            val toAccInTotal = (toAcc?.includeInTotal == true && !toAcc.isArchived)
+            val amount = CurrencyHelper.convert(tx.amount, acc?.currency ?: state.baseCurrency, state.baseCurrency)
+
+            when (tx.type) {
+                "EXPENSE" -> {
+                    if (accInTotal) {
+                        change -= amount
+                    }
+                }
+                "INCOME" -> {
+                    if (accInTotal) {
+                        change += amount
+                    }
+                }
+                "TRANSFER" -> {
+                    if (accInTotal && !toAccInTotal) {
+                        change -= amount
+                    } else if (!accInTotal && toAccInTotal) {
+                        val toAmount = CurrencyHelper.convert(tx.amount, toAcc?.currency ?: state.baseCurrency, state.baseCurrency)
+                        change += toAmount
+                    }
+                }
+            }
+        }
+        change
+    }
+
     // "Деньги на месяц" (Total funds available this cycle)
-    // Calculate the true baseline at the start of the period by adding back what was spent, and removing what was earned
-    val baselineStartingBalance = (state.totalBalance + spentSoFar - incomeSoFar).coerceAtLeast(0.0)
+    // True baseline at start of period = current totalBalance - (netChangeInCycle)
+    val baselineStartingBalance = (state.totalBalance - netTotalBalanceChangeInCycle).coerceAtLeast(0.0)
     val totalMoneyForMonth = baselineStartingBalance + incomeSoFar + remainingPlannedIncome
 
     // "Свободно на конец месяца" (Free money at end of month)

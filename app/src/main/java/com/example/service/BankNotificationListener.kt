@@ -10,10 +10,28 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 
 class BankNotificationListener : NotificationListenerService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val processingMutex = Mutex()
+
+    companion object {
+        // Cache of recently processed notification keys (sbn.key) with timestamp (60s TTL).
+        // Prevents re-processing when the bank app updates an already posted notification.
+        private val processedNotificationKeys = ConcurrentHashMap<String, Long>()
+
+        // Debounce cache of recent transaction signatures (pkg_amount_type_merchant) for 2.5 seconds.
+        // Prevents near-simultaneous duplicate push broadcasts from the OS/app,
+        // while allowing genuine consecutive payments (e.g. paying for another person on transit after 5-10s).
+        private val recentTransactionSignatures = ConcurrentHashMap<String, Long>()
+
+        private const val SBN_KEY_CACHE_TTL_MS = 60_000L
+        private const val SIGNATURE_DEBOUNCE_MS = 2_500L
+    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
@@ -25,7 +43,14 @@ class BankNotificationListener : NotificationListenerService() {
             return
         }
 
-        // CRITICAL: Ignore other personal finance apps to avoid double counting (they also intercept bank pushes)
+        // 1. Ignore group summaries (cards that merely summarize multiple notifications in Android)
+        val flags = sbn.notification.flags
+        if ((flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            Log.d("BankNotificationListener", "Skipping group summary notification from $packageName")
+            return
+        }
+
+        // 2. Ignore other personal finance apps to avoid double counting (they also intercept bank pushes)
         val ignoredPackages = listOf(
             "ru.zenmoney.android",
             "com.coinkeeper.android",
@@ -36,6 +61,26 @@ class BankNotificationListener : NotificationListenerService() {
         )
         if (ignoredPackages.any { packageName.contains(it, ignoreCase = true) }) {
             return
+        }
+
+        val currentTime = System.currentTimeMillis()
+
+        // Prune stale cache entries periodically to avoid memory leaks
+        if (processedNotificationKeys.size > 50) {
+            processedNotificationKeys.entries.removeIf { currentTime - it.value > SBN_KEY_CACHE_TTL_MS }
+        }
+        if (recentTransactionSignatures.size > 50) {
+            recentTransactionSignatures.entries.removeIf { currentTime - it.value > SIGNATURE_DEBOUNCE_MS }
+        }
+
+        // 3. In-memory check: Has this exact notification key already been processed?
+        val sbnKey = sbn.key
+        if (sbnKey != null) {
+            val lastSeen = processedNotificationKeys[sbnKey]
+            if (lastSeen != null && (currentTime - lastSeen) < SBN_KEY_CACHE_TTL_MS) {
+                Log.d("BankNotificationListener", "Skipping already processed sbn.key: $sbnKey")
+                return
+            }
         }
 
         val extras = sbn.notification.extras ?: return
@@ -59,62 +104,84 @@ class BankNotificationListener : NotificationListenerService() {
 
         val parsed = BankNotificationParser.parse(text, title, packageName)
         if (parsed != null && parsed.amount > 0) {
+            // 4. Short-window signature debounce check (2.5 seconds)
+            val signature = "${packageName}_${parsed.amount}_${parsed.type}_${parsed.merchant}"
+            val lastSigTime = recentTransactionSignatures[signature]
+            if (lastSigTime != null && (currentTime - lastSigTime) < SIGNATURE_DEBOUNCE_MS) {
+                Log.d("BankNotificationListener", "Skipping rapid duplicate signature within 2.5s: $signature")
+                return
+            }
+
+            // Mark key and signature as processed immediately in memory
+            if (sbnKey != null) {
+                processedNotificationKeys[sbnKey] = currentTime
+            }
+            recentTransactionSignatures[signature] = currentTime
+
             Log.d("BankNotificationListener", "Intercepted bank notification: $parsed from $packageName")
 
             serviceScope.launch {
-                try {
-                    val db = AppDatabase.getDatabase(applicationContext, serviceScope)
-                    // Check if matching account exists by currency or card
-                    val accounts = db.accountDao().getActiveAccountsSync()
-                    val matchedAccount = accounts.find { acc ->
-                        (parsed.cardLast4 != null && acc.name.contains(parsed.cardLast4)) ||
-                                acc.name.contains(parsed.bankName, ignoreCase = true) ||
-                                (acc.currency == parsed.currency && !acc.isArchived)
-                    } ?: accounts.firstOrNull()
+                processingMutex.withLock {
+                    try {
+                        val db = AppDatabase.getDatabase(applicationContext, serviceScope)
+                        val timestampVal = sbn.postTime.takeIf { it > 0 } ?: currentTime
+                        val rawTextVal = "${title?.let { "$it: " } ?: ""}$text"
 
-                    val categories = db.categoryDao().getAllCategoriesSync()
-                    val suggestedCatId = BankNotificationParser.matchCategoryId(categories, parsed.matchedCategoryKeyword)
+                        // Safety check: duplicate in DB within the last 3 seconds
+                        val duplicate = db.pendingNotificationDao().findRecentDuplicateByDetails(
+                            packageName = packageName,
+                            amount = parsed.amount,
+                            type = parsed.type,
+                            sinceTime = timestampVal - SIGNATURE_DEBOUNCE_MS
+                        ) ?: db.pendingNotificationDao().findRecentDuplicateByText(
+                            rawText = rawTextVal,
+                            sinceTime = timestampVal - SIGNATURE_DEBOUNCE_MS
+                        )
 
-                    val rawTextVal = "${title?.let { "$it: " } ?: ""}$text"
-                    val timestampVal = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
-                    
-                    // Duplicate check: same text within the last 10 minutes
-                    val duplicate = db.pendingNotificationDao().findRecentDuplicateByText(
-                        rawText = rawTextVal,
-                        sinceTime = timestampVal - 10 * 60 * 1000L
-                    )
-                    
-                    if (duplicate != null) {
-                        Log.d("BankNotificationListener", "Skipping duplicate notification: $rawTextVal")
-                        return@launch
+                        if (duplicate != null) {
+                            Log.d("BankNotificationListener", "Skipping duplicate notification: $rawTextVal")
+                            return@withLock
+                        }
+
+                        // Check if matching account exists by currency or card
+                        val accounts = db.accountDao().getActiveAccountsSync()
+                        val matchedAccount = accounts.find { acc ->
+                            (parsed.cardLast4 != null && acc.name.contains(parsed.cardLast4)) ||
+                                    acc.name.contains(parsed.bankName, ignoreCase = true) ||
+                                    (acc.currency == parsed.currency && !acc.isArchived)
+                        } ?: accounts.firstOrNull()
+
+                        val categories = db.categoryDao().getAllCategoriesSync()
+                        val suggestedCatId = BankNotificationParser.matchCategoryId(categories, parsed.matchedCategoryKeyword)
+
+                        val entity = PendingNotificationEntity(
+                            packageName = packageName,
+                            bankName = parsed.bankName,
+                            rawText = rawTextVal,
+                            type = parsed.type,
+                            amount = parsed.amount,
+                            currency = parsed.currency,
+                            merchantOrSender = parsed.merchant,
+                            cardLast4 = parsed.cardLast4,
+                            suggestedCategoryId = suggestedCatId,
+                            suggestedAccountId = matchedAccount?.id,
+                            timestamp = timestampVal
+                        )
+                        val insertedId = db.pendingNotificationDao().insertNotification(entity)
+
+                        // Send push reminder with stable notification ID tied to inserted record ID
+                        PushNotificationHelper.sendBankTransactionReminder(
+                            context = applicationContext,
+                            bankName = parsed.bankName,
+                            amount = parsed.amount,
+                            currency = parsed.currency,
+                            merchant = parsed.merchant,
+                            type = parsed.type,
+                            notificationId = (insertedId % 100000).toInt() + 1000
+                        )
+                    } catch (e: Exception) {
+                        Log.e("BankNotificationListener", "Failed to process bank notification", e)
                     }
-
-                    val entity = PendingNotificationEntity(
-                        packageName = packageName,
-                        bankName = parsed.bankName,
-                        rawText = rawTextVal,
-                        type = parsed.type,
-                        amount = parsed.amount,
-                        currency = parsed.currency,
-                        merchantOrSender = parsed.merchant,
-                        cardLast4 = parsed.cardLast4,
-                        suggestedCategoryId = suggestedCatId,
-                        suggestedAccountId = matchedAccount?.id,
-                        timestamp = timestampVal
-                    )
-                    db.pendingNotificationDao().insertNotification(entity)
-
-                    // Send push reminder if enabled so user gets reminded in background
-                    PushNotificationHelper.sendBankTransactionReminder(
-                        context = applicationContext,
-                        bankName = parsed.bankName,
-                        amount = parsed.amount,
-                        currency = parsed.currency,
-                        merchant = parsed.merchant,
-                        type = parsed.type
-                    )
-                } catch (e: Exception) {
-                    Log.e("BankNotificationListener", "Failed to process bank notification", e)
                 }
             }
         }

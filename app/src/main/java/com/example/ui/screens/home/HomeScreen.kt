@@ -21,6 +21,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import org.burnoutcrew.reorderable.ReorderableItem
+import org.burnoutcrew.reorderable.detectReorderAfterLongPress
+import org.burnoutcrew.reorderable.rememberReorderableLazyListState
+import org.burnoutcrew.reorderable.reorderable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,9 +63,43 @@ fun HomeScreen(
     onOpenIncomeDistribution: () -> Unit = {},
     onBankOfTheMonthSelect: (String) -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
+    onUpdateAccountsOrder: (List<AccountEntity>) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isBalanceHidden by remember { mutableStateOf(false) }
+    var accountsList by remember { mutableStateOf(state.accounts.filter { !it.isArchived }) }
+
+    LaunchedEffect(state.accounts) {
+        // Only update if sizes differ or elements are missing, to avoid resetting order while dragging
+        val activeAccounts = state.accounts.filter { !it.isArchived }
+        val currentIds = accountsList.map { it.id }.toSet()
+        val newIds = activeAccounts.map { it.id }.toSet()
+        if (currentIds != newIds) {
+            accountsList = activeAccounts
+        } else {
+            // Update the data but keep current order
+            accountsList = accountsList.mapNotNull { existing ->
+                activeAccounts.find { it.id == existing.id }
+            }
+        }
+    }
+    
+    val reorderState = rememberReorderableLazyListState(
+        onMove = { from, to ->
+            accountsList = accountsList.toMutableList().apply {
+                if (from.index < size && to.index < size) {
+                    add(to.index, removeAt(from.index))
+                }
+            }
+        },
+        canDragOver = { draggedOver, dragging -> 
+            draggedOver.index < accountsList.size 
+        },
+        onDragEnd = { _, _ ->
+            onUpdateAccountsOrder(accountsList)
+        }
+    )
+
     val accountsMap = remember(state.accounts) { state.accounts.associateBy { it.id } }
     val goalsMap = remember(state.goals) { state.goals.associateBy { it.id } }
     val debtsMap = remember(state.debts) { state.debts.associateBy { it.id } }
@@ -459,23 +499,29 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 LazyRow(
+                    state = reorderState.listState,
                     contentPadding = PaddingValues(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth().testTag("accounts_carousel")
+                    modifier = Modifier.fillMaxWidth().testTag("accounts_carousel").reorderable(reorderState)
                 ) {
-                    items(state.accounts.filter { !it.isArchived }) { acc ->
-                        val accColor = IconHelper.parseColor(acc.colorHex)
-                        Surface(
-                            modifier = Modifier
-                                .width(150.dp)
-                                .height(108.dp)
-                                .clickable { onEditAccount(acc) },
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, accColor.copy(alpha = 0.4f)),
-                            tonalElevation = 2.dp
-                        ) {
-                            Column(
+                    items(accountsList, key = { it.id }) { acc ->
+                        ReorderableItem(reorderState, key = acc.id) { isDragging ->
+                            val elevation by animateDpAsState(if (isDragging) 8.dp else 2.dp)
+                            val accColor = IconHelper.parseColor(acc.colorHex)
+                            Surface(
+                                modifier = Modifier
+                                    .width(150.dp)
+                                    .height(108.dp)
+                                    .zIndex(if (isDragging) 1f else 0f)
+                                    .detectReorderAfterLongPress(reorderState)
+                                    .clickable { if (!isDragging) onEditAccount(acc) },
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, accColor.copy(alpha = 0.4f)),
+                                tonalElevation = elevation,
+                                shadowElevation = if (isDragging) 4.dp else 0.dp
+                            ) {
+                                Column(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(12.dp),
@@ -531,6 +577,7 @@ fun HomeScreen(
                                     )
                                 }
                             }
+                        }
                         }
                     }
 

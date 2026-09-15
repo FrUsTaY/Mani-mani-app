@@ -196,7 +196,7 @@ fun BankSyncScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        text = "Пуш-уведомления приложения",
+                                        text = "Пуш-напоминания об операциях",
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.titleSmall
                                     )

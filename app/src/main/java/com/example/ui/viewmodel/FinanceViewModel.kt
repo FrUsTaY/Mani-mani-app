@@ -166,7 +166,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         
         // Restore evening summary schedule if enabled
         if (_isEveningSummaryEnabled.value) {
-            com.example.service.EveningSummaryScheduler.schedule(getApplication(), _eveningSummaryTime.value)
+            com.example.service.EveningSummaryScheduler.schedule(getApplication(), _eveningSummaryTime.value, forceUpdate = false)
         }
     }
 
@@ -392,7 +392,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         userFinancePrefs.setEveningSummaryEnabled(enabled)
         _isEveningSummaryEnabled.value = enabled
         if (enabled) {
-            com.example.service.EveningSummaryScheduler.schedule(getApplication(), _eveningSummaryTime.value)
+            com.example.service.EveningSummaryScheduler.schedule(getApplication(), _eveningSummaryTime.value, forceUpdate = true)
         } else {
             com.example.service.EveningSummaryScheduler.cancel(getApplication())
         }
@@ -406,7 +406,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         userFinancePrefs.setEveningSummaryTime(time)
         _eveningSummaryTime.value = time
         if (_isEveningSummaryEnabled.value) {
-            com.example.service.EveningSummaryScheduler.schedule(getApplication(), time)
+            com.example.service.EveningSummaryScheduler.schedule(getApplication(), time, forceUpdate = true)
         }
     }
 
@@ -466,6 +466,15 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.deleteAccount(account)
             _statusMessage.value = "Счёт удалён"
+        }
+    }
+
+    fun updateAccountsOrder(reorderedAccounts: List<AccountEntity>) {
+        viewModelScope.launch {
+            val updatedAccounts = reorderedAccounts.mapIndexed { index, account ->
+                account.copy(orderIndex = index)
+            }
+            repository.updateAccounts(updatedAccounts)
         }
     }
 

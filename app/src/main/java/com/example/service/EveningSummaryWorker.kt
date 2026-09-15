@@ -15,6 +15,37 @@ class EveningSummaryWorker(
     override suspend fun doWork(): Result {
         try {
             Log.d("EveningSummaryWorker", "Executing evening summary worker")
+
+            val prefs = UserFinancePreferences(applicationContext)
+            if (!prefs.isEveningSummaryEnabled()) {
+                Log.d("EveningSummaryWorker", "Evening summary disabled in preferences. Skipping.")
+                return Result.success()
+            }
+
+            // Verify current time: WorkManager may wake up during morning or deep night due to Doze mode / maintenance window
+            val scheduledTime = prefs.getEveningSummaryTime()
+            val timeParts = scheduledTime.split(":")
+            val targetHour = timeParts.getOrNull(0)?.toIntOrNull() ?: 21
+            val targetMinute = timeParts.getOrNull(1)?.toIntOrNull() ?: 0
+
+            val nowCal = java.util.Calendar.getInstance()
+            val currentHour = nowCal.get(java.util.Calendar.HOUR_OF_DAY)
+            val currentMinute = nowCal.get(java.util.Calendar.MINUTE)
+
+            val currentMinutesOfDay = currentHour * 60 + currentMinute
+            val targetMinutesOfDay = targetHour * 60 + targetMinute
+            val diffMinutes = kotlin.math.abs(currentMinutesOfDay - targetMinutesOfDay)
+            val cyclicDiffMinutes = kotlin.math.min(diffMinutes, 1440 - diffMinutes)
+
+            // Allow window of ±90 minutes around target evening time. Skip if running at unexpected hours (e.g. morning 09:00 or night)
+            if (cyclicDiffMinutes > 90) {
+                Log.w(
+                    "EveningSummaryWorker",
+                    "Skipping summary notification: executed at %02d:%02d, outside scheduled window (%s)".format(currentHour, currentMinute, scheduledTime)
+                )
+                return Result.success()
+            }
+
             val db = AppDatabase.getDatabase(applicationContext, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
             
             // Get today's start and end time
@@ -61,7 +92,7 @@ class EveningSummaryWorker(
             )
             val builder = androidx.core.app.NotificationCompat.Builder(applicationContext, PushNotificationHelper.CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("🌙 Итоги дня")
+                .setContentTitle("🌙 Вечерняя сводка")
                 .setContentText(text)
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)

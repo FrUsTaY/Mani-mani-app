@@ -140,4 +140,5 @@ dependencies {
 }
 dependencies {
     implementation("androidx.work:work-runtime-ktx:2.8.1")
+    implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
 }

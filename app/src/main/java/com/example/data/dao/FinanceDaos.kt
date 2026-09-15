@@ -24,6 +24,9 @@ interface AccountDao {
     @Update
     suspend fun updateAccount(account: AccountEntity)
 
+    @Update
+    suspend fun updateAccounts(accounts: List<AccountEntity>)
+
     @Delete
     suspend fun deleteAccount(account: AccountEntity)
 

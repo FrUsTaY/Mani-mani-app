@@ -37,7 +37,8 @@ object PushNotificationHelper {
         amount: Double,
         currency: String = "RUB",
         merchant: String = "",
-        type: String = "EXPENSE"
+        type: String = "EXPENSE",
+        notificationId: Int? = null
     ) {
         val prefs = UserFinancePreferences(context)
         if (!prefs.isPushNotificationsEnabled()) {
@@ -45,6 +46,8 @@ object PushNotificationHelper {
         }
 
         createNotificationChannel(context)
+
+        val notifId = notificationId ?: notificationIdCounter++
 
         val formattedAmount = CurrencyHelper.formatAmount(amount, currency)
         val title = when (type) {
@@ -65,7 +68,7 @@ object PushNotificationHelper {
 
         val pendingIntent = PendingIntent.getActivity(
             context,
-            notificationIdCounter,
+            notifId,
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -82,7 +85,7 @@ object PushNotificationHelper {
 
         try {
             val notificationManager = NotificationManagerCompat.from(context)
-            notificationManager.notify(notificationIdCounter++, builder.build())
+            notificationManager.notify(notifId, builder.build())
         } catch (_: SecurityException) {
             // Android 13+ permission not yet granted
         }

@@ -14,6 +14,9 @@ interface PendingNotificationDao {
 
     @Query("SELECT * FROM pending_notifications WHERE rawText = :rawText AND timestamp > :sinceTime LIMIT 1")
     suspend fun findRecentDuplicateByText(rawText: String, sinceTime: Long): PendingNotificationEntity?
+
+    @Query("SELECT * FROM pending_notifications WHERE packageName = :packageName AND amount = :amount AND type = :type AND timestamp > :sinceTime LIMIT 1")
+    suspend fun findRecentDuplicateByDetails(packageName: String, amount: Double, type: String, sinceTime: Long): PendingNotificationEntity?
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotification(notification: PendingNotificationEntity): Long
