@@ -30,6 +30,7 @@ import com.example.ui.screens.home.HomeScreen
 import com.example.ui.screens.planning.PlanningScreen
 import com.example.ui.screens.sync.BankSyncScreen
 import com.example.ui.screens.transactions.TransactionsScreen
+import com.example.ui.screens.onboarding.WelcomeScreen
 import com.example.ui.viewmodel.FinanceViewModel
 import kotlinx.coroutines.launch
 
@@ -58,6 +59,7 @@ fun ManiManiApp(
     var accountToEdit by remember { mutableStateOf<AccountEntity?>(null) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
     var showBankSyncScreen by remember { mutableStateOf(false) }
+    var returnToNotificationSettingsFromBankSync by remember { mutableStateOf(false) }
     var showGeminiAssistantScreen by remember { mutableStateOf(false) }
     var showNotificationSettingsScreen by remember { mutableStateOf(false) }
     var showPaydaySettingsDialog by remember { mutableStateOf(false) }
@@ -88,7 +90,7 @@ fun ManiManiApp(
         contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (!showBankSyncScreen && !showGeminiAssistantScreen && !showNotificationSettingsScreen) {
+            if (!state.isFirstLaunch && !showBankSyncScreen && !showGeminiAssistantScreen && !showNotificationSettingsScreen) {
                 NavigationBar(
                     windowInsets = WindowInsets.navigationBars,
                     modifier = Modifier.testTag("bottom_nav_bar")
@@ -119,7 +121,7 @@ fun ManiManiApp(
         floatingActionButton = {
             // FAB displayed on Home and History tabs for fast access
             AnimatedVisibility(
-                visible = !showBankSyncScreen && !showGeminiAssistantScreen && !showNotificationSettingsScreen && (currentTab == ManiManiNavTab.HOME || currentTab == ManiManiNavTab.HISTORY),
+                visible = !state.isFirstLaunch && !showBankSyncScreen && !showGeminiAssistantScreen && !showNotificationSettingsScreen && (currentTab == ManiManiNavTab.HOME || currentTab == ManiManiNavTab.HISTORY),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
@@ -143,12 +145,17 @@ fun ManiManiApp(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (showGeminiAssistantScreen) {
+            if (state.isFirstLaunch) {
+                WelcomeScreen(
+                    onStartClick = { viewModel.completeFirstLaunch() }
+                )
+            } else if (showGeminiAssistantScreen) {
                 GeminiAssistantScreen(
                     state = state,
                     onBack = { showGeminiAssistantScreen = false },
                     onAskGemini = { type, question -> viewModel.askGemini(type, question) },
                     onClearChat = { viewModel.clearAiChat() },
+                    onUpdateInputText = { viewModel.updateAiInputText(it) },
                     onSaveApiKey = { viewModel.saveGeminiApiKey(it) },
                     onTestApiKey = { key, callback -> viewModel.testGeminiApiKey(key, callback) }
                 )
@@ -163,16 +170,25 @@ fun ManiManiApp(
                     onOpenBankSync = {
                         showNotificationSettingsScreen = false
                         showBankSyncScreen = true
+                        returnToNotificationSettingsFromBankSync = true
                     },
                     isEveningSummaryEnabled = isEveningSummaryEnabled,
                     onToggleEveningSummary = { viewModel.setEveningSummaryEnabled(it) },
                     eveningSummaryTime = eveningSummaryTime,
-                    onSetEveningSummaryTime = { viewModel.setEveningSummaryTime(it) }
+                    onSetEveningSummaryTime = { viewModel.setEveningSummaryTime(it) },
+                    onToggleBankIntercept = { viewModel.setBankPushInterceptEnabled(it) },
+                    onToggleZenmoneyIntercept = { viewModel.setZenmoneyPushInterceptEnabled(it) }
                 )
             } else if (showBankSyncScreen) {
                 BankSyncScreen(
                     state = state,
-                    onBack = { showBankSyncScreen = false },
+                    onBack = { 
+                        showBankSyncScreen = false 
+                        if (returnToNotificationSettingsFromBankSync) {
+                            showNotificationSettingsScreen = true
+                            returnToNotificationSettingsFromBankSync = false
+                        }
+                    },
                     onConfirmNotification = { notif, accId, catId ->
                         viewModel.confirmPendingNotification(notif, accId, catId)
                     },
@@ -244,9 +260,11 @@ fun ManiManiApp(
                         onAddGoal = { name, target, curr, col, icon ->
                             viewModel.addGoal(name, target, curr, col, icon)
                         },
+                        onEditGoal = { viewModel.updateGoal(it) },
                         onContributeGoal = { goalId, amount -> viewModel.contributeToGoal(goalId, amount) },
                         onDeleteGoal = { viewModel.deleteGoal(it) },
                         onAddDebt = { person, amt, isOwed, note -> viewModel.addDebt(person, amt, isOwed, note) },
+                        onEditDebt = { viewModel.updateDebt(it) },
                         onToggleDebt = { viewModel.toggleDebtSettled(it) },
                         onDeleteDebt = { viewModel.deleteDebt(it) },
                         onAddPlannedTransaction = { viewModel.addPlannedTransaction(it) },
@@ -268,6 +286,7 @@ fun ManiManiApp(
                     )
 
                     ManiManiNavTab.ACCOUNTS -> AccountsSettingsScreen(
+                        viewModel = viewModel,
                         state = state,
                         onAddAccountClick = { showAddAccountDialog = true },
                         onManageCategories = { showManageCategoriesDialog = true },
@@ -276,7 +295,6 @@ fun ManiManiApp(
                         onDeleteAccount = { viewModel.deleteAccount(it) },
                         onCurrencyChange = { viewModel.setBaseCurrency(it) },
                         onClearAllData = { keepAccounts -> viewModel.clearAllData(keepAccounts) },
-                        onRestoreDemoData = { viewModel.resetToDemoData() },
                         onTogglePushNotifications = { viewModel.setPushNotificationsEnabled(it) },
                         onSendTestPush = { viewModel.sendTestPushNotification() },
                         onOpenBankSync = { showBankSyncScreen = true },

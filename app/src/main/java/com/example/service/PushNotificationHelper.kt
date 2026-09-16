@@ -74,7 +74,7 @@ object PushNotificationHelper {
         )
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.example.R.drawable.ic_notification_mono)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -111,7 +111,7 @@ object PushNotificationHelper {
         )
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(com.example.R.drawable.ic_notification_mono)
             .setContentTitle("🔔 Мани-мани: Пуш-уведомления активны")
             .setContentText("При покупках и переводах в банках вам будут приходить напоминания добавить операцию.")
             .setStyle(

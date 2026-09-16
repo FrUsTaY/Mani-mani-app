@@ -43,6 +43,11 @@ class BankNotificationListener : NotificationListenerService() {
             return
         }
 
+        // Check intercept settings
+        val userPrefs = UserFinancePreferences(applicationContext)
+        val isBankInterceptEnabled = userPrefs.isBankPushInterceptEnabled()
+        val isZenmoneyInterceptEnabled = userPrefs.isZenmoneyPushInterceptEnabled()
+
         // 1. Ignore group summaries (cards that merely summarize multiple notifications in Android)
         val flags = sbn.notification.flags
         if ((flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
@@ -52,7 +57,6 @@ class BankNotificationListener : NotificationListenerService() {
 
         // 2. Ignore other personal finance apps to avoid double counting (they also intercept bank pushes)
         val ignoredPackages = listOf(
-            "ru.zenmoney.android",
             "com.coinkeeper.android",
             "com.monefy.app.lite",
             "com.monefy.app.pro",
@@ -60,6 +64,17 @@ class BankNotificationListener : NotificationListenerService() {
             "com.orion.cashew"
         )
         if (ignoredPackages.any { packageName.contains(it, ignoreCase = true) }) {
+            return
+        }
+
+        val isZenmoney = packageName == "ru.zenmoney.androidsub" || packageName == "ru.zenmoney.android"
+        
+        if (isZenmoney && !isZenmoneyInterceptEnabled) {
+            return
+        }
+
+        val isKnownBank = BankNotificationParser.KNOWN_BANK_PACKAGES.containsKey(packageName)
+        if (isKnownBank && !isBankInterceptEnabled) {
             return
         }
 
@@ -92,13 +107,13 @@ class BankNotificationListener : NotificationListenerService() {
         if (text.isNullOrBlank()) return
 
         // Check if package belongs to known banks or notification text mentions financial transaction keywords
-        val isKnownBank = BankNotificationParser.KNOWN_BANK_PACKAGES.containsKey(packageName)
+        val isKnownBankPackage = BankNotificationParser.KNOWN_BANK_PACKAGES.containsKey(packageName)
         val fullText = "${title ?: ""} $text".lowercase()
         val hasFinancialKeywords = fullText.contains("покупка") || fullText.contains("списание") ||
                 fullText.contains("зачисление") || fullText.contains("перевод") ||
                 fullText.contains("оплата") || fullText.contains("баланс")
 
-        if (!isKnownBank && !hasFinancialKeywords) {
+        if (!isKnownBankPackage && !hasFinancialKeywords) {
             return
         }
 
@@ -154,15 +169,19 @@ class BankNotificationListener : NotificationListenerService() {
                         val categories = db.categoryDao().getAllCategoriesSync()
                         val suggestedCatId = BankNotificationParser.matchCategoryId(categories, parsed.matchedCategoryKeyword)
 
+                        val isZenmoneyPush = packageName == "ru.zenmoney.androidsub" || packageName == "ru.zenmoney.android"
+                        val zenmoneyCategory = if (isZenmoneyPush) parsed.cardLast4 else null
+                        val actualCardLast4 = if (isZenmoneyPush) null else parsed.cardLast4
+                        
                         val entity = PendingNotificationEntity(
                             packageName = packageName,
                             bankName = parsed.bankName,
-                            rawText = rawTextVal,
+                            rawText = if (isZenmoneyPush && zenmoneyCategory != null) "$zenmoneyCategory: $rawTextVal" else rawTextVal,
                             type = parsed.type,
                             amount = parsed.amount,
                             currency = parsed.currency,
                             merchantOrSender = parsed.merchant,
-                            cardLast4 = parsed.cardLast4,
+                            cardLast4 = actualCardLast4,
                             suggestedCategoryId = suggestedCatId,
                             suggestedAccountId = matchedAccount?.id,
                             timestamp = timestampVal
@@ -175,7 +194,7 @@ class BankNotificationListener : NotificationListenerService() {
                             bankName = parsed.bankName,
                             amount = parsed.amount,
                             currency = parsed.currency,
-                            merchant = parsed.merchant,
+                            merchant = if (isZenmoneyPush && zenmoneyCategory != null) "${parsed.merchant} (Заметка: $zenmoneyCategory)" else parsed.merchant,
                             type = parsed.type,
                             notificationId = (insertedId % 100000).toInt() + 1000
                         )

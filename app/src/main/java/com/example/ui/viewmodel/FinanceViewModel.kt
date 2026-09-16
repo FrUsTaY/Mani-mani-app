@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.database.AppDatabase
 import com.example.data.entity.*
 import com.example.data.repository.FinanceRepository
+import com.example.data.repository.BackupRepository
+import android.net.Uri
 import com.example.service.PushNotificationHelper
 import com.example.service.UserBankHelper
 import com.example.service.UserFinancePreferences
@@ -54,6 +56,7 @@ data class FinanceUiState(
     val userGeminiApiKey: String = "",
     val geminiApiKeyMasked: String = "",
     val aiMessages: List<AiMessage> = emptyList(),
+    val aiInputText: String = "",
     val aiState: AiState = AiState.Idle,
     val payday: Int = 10,
     val paydayPeriodLabel: String = "",
@@ -62,7 +65,10 @@ data class FinanceUiState(
     val totalDaysInCycle: Int = 30,
     val bankOfTheMonth: String = "VTB",
     val isPushNotificationsEnabled: Boolean = true,
-    val themeMode: AppThemeMode = AppThemeMode.SYSTEM
+    val isBankPushInterceptEnabled: Boolean = true,
+    val isZenmoneyPushInterceptEnabled: Boolean = false,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val isFirstLaunch: Boolean = false
 )
 
 @Suppress("UNCHECKED_CAST")
@@ -112,10 +118,13 @@ data class AppConfig(
     val payday: Int,
     val bankOfTheMonth: String,
     val isPushNotificationsEnabled: Boolean,
+    val isBankPushInterceptEnabled: Boolean,
+    val isZenmoneyPushInterceptEnabled: Boolean,
     val themeMode: AppThemeMode
 )
 
 class FinanceViewModel(application: Application) : AndroidViewModel(application) {
+    val backupRepository: BackupRepository
 
     private val repository: FinanceRepository
     val geminiPrefs = GeminiPreferenceManager(application)
@@ -134,6 +143,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _isPushNotificationsEnabled = MutableStateFlow(userFinancePrefs.isPushNotificationsEnabled())
     val isPushNotificationsEnabled: StateFlow<Boolean> = _isPushNotificationsEnabled.asStateFlow()
 
+    private val _isBankPushInterceptEnabled = MutableStateFlow(userFinancePrefs.isBankPushInterceptEnabled())
+    private val _isZenmoneyPushInterceptEnabled = MutableStateFlow(userFinancePrefs.isZenmoneyPushInterceptEnabled())
+
     private val _themeMode = MutableStateFlow(userFinancePrefs.getThemeMode())
     val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
 
@@ -141,15 +153,30 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         _baseCurrency,
         _payday,
         _bankOfTheMonth,
-        _isPushNotificationsEnabled,
-        _themeMode
-    ) { curr, payday, bank, pushEnabled, theme ->
-        AppConfig(curr, payday, bank, pushEnabled, theme)
+        combine(
+            _isPushNotificationsEnabled,
+            _isBankPushInterceptEnabled,
+            _isZenmoneyPushInterceptEnabled,
+            _themeMode
+        ) { pushEnabled, bankIntercept, zenmoneyIntercept, theme ->
+            listOf(pushEnabled, bankIntercept, zenmoneyIntercept, theme)
+        }
+    ) { curr, payday, bank, extras ->
+        AppConfig(
+            baseCurrency = curr,
+            payday = payday,
+            bankOfTheMonth = bank,
+            isPushNotificationsEnabled = extras[0] as Boolean,
+            isBankPushInterceptEnabled = extras[1] as Boolean,
+            isZenmoneyPushInterceptEnabled = extras[2] as Boolean,
+            themeMode = extras[3] as AppThemeMode
+        )
     }
 
     private val _statusMessage = MutableStateFlow<String?>(null)
 
     private val _aiMessages = MutableStateFlow<List<AiMessage>>(emptyList())
+    private val _aiInputText = MutableStateFlow("")
     private val _aiState = MutableStateFlow<AiState>(AiState.Idle)
     private val _userApiKey = MutableStateFlow(geminiPrefs.getUserApiKey())
     private val _isAiConfigured = MutableStateFlow(geminiPrefs.isApiKeyConfigured())
@@ -163,6 +190,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     init {
         val database = AppDatabase.getDatabase(application, viewModelScope)
         repository = FinanceRepository(database)
+        backupRepository = BackupRepository(application, database.accountDao(), database.categoryDao(), database.transactionDao(), database.budgetDao(), database.goalDao(), database.debtDao(), database.plannedTransactionDao(), userFinancePrefs)
         
         // Restore evening summary schedule if enabled
         if (_isEveningSummaryEnabled.value) {
@@ -301,23 +329,38 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             totalDaysInCycle = paydayPeriod.totalDaysInCycle,
             bankOfTheMonth = config.bankOfTheMonth,
             isPushNotificationsEnabled = config.isPushNotificationsEnabled,
+            isBankPushInterceptEnabled = config.isBankPushInterceptEnabled,
+            isZenmoneyPushInterceptEnabled = config.isZenmoneyPushInterceptEnabled,
             themeMode = config.themeMode
         )
     }
+
+    private val _isFirstLaunch = MutableStateFlow(userFinancePrefs.isFirstLaunch())
 
     val uiState: StateFlow<FinanceUiState> = combine(
         baseFinanceFlow,
         _aiMessages,
         _aiState,
         _isAiConfigured,
-        _userApiKey
-    ) { baseState, messages, aiState, isAiConfigured, userKey ->
+        _userApiKey,
+        _isFirstLaunch,
+        _aiInputText
+    ) { params ->
+        val baseState = params[0] as FinanceUiState
+        val messages = params[1] as List<AiMessage>
+        val aiState = params[2] as AiState
+        val isAiConfigured = params[3] as Boolean
+        val userKey = params[4] as String
+        val isFirstLaunch = params[5] as Boolean
+        val aiInputText = params[6] as String
         baseState.copy(
             aiMessages = messages,
             aiState = aiState,
             isAiConfigured = isAiConfigured,
             userGeminiApiKey = userKey,
-            geminiApiKeyMasked = geminiPrefs.getMaskedApiKey()
+            geminiApiKeyMasked = geminiPrefs.getMaskedApiKey(),
+            isFirstLaunch = isFirstLaunch,
+            aiInputText = aiInputText
         )
     }.stateIn(
         scope = viewModelScope,
@@ -414,6 +457,16 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         userFinancePrefs.setPushNotificationsEnabled(enabled)
         _isPushNotificationsEnabled.value = enabled
         _statusMessage.value = if (enabled) "Пуш-уведомления включены" else "Пуш-уведомления отключены"
+    }
+
+    fun setBankPushInterceptEnabled(enabled: Boolean) {
+        userFinancePrefs.setBankPushInterceptEnabled(enabled)
+        _isBankPushInterceptEnabled.value = enabled
+    }
+
+    fun setZenmoneyPushInterceptEnabled(enabled: Boolean) {
+        userFinancePrefs.setZenmoneyPushInterceptEnabled(enabled)
+        _isZenmoneyPushInterceptEnabled.value = enabled
     }
 
     fun sendTestPushNotification() {
@@ -551,10 +604,24 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun updateGoal(goal: GoalEntity) {
+        viewModelScope.launch {
+            repository.updateGoal(goal)
+            _statusMessage.value = "Копилка обновлена"
+        }
+    }
+
     fun deleteGoal(goal: GoalEntity) {
         viewModelScope.launch {
             repository.deleteGoal(goal)
             _statusMessage.value = "Цель удалена"
+        }
+    }
+
+    fun updateDebt(debt: DebtEntity) {
+        viewModelScope.launch {
+            repository.updateDebt(debt)
+            _statusMessage.value = "Долг обновлен"
         }
     }
 
@@ -598,6 +665,16 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         categoryId: Long?
     ) {
         viewModelScope.launch {
+            val isZenmoney = notification.packageName == "ru.zenmoney.androidsub" || notification.packageName == "ru.zenmoney.android"
+            var note = "${notification.bankName}: ${notification.merchantOrSender}"
+            if (isZenmoney) {
+                // We prepended the category to rawText in BankNotificationListener for Zenmoney
+                val cat = notification.rawText.substringBefore(":")
+                if (cat.isNotBlank() && cat != notification.rawText) {
+                    note = cat.trim()
+                }
+            }
+            
             repository.addTransaction(
                 TransactionEntity(
                     type = notification.type,
@@ -605,8 +682,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     accountId = accountId,
                     categoryId = categoryId,
                     timestamp = notification.timestamp,
-                    note = "${notification.bankName}: ${notification.merchantOrSender}",
-                    tag = "банк-авто"
+                    note = note,
+                    tag = if (isZenmoney) "дзен-мани" else "банк-авто"
                 )
             )
             repository.markNotificationProcessed(notification.id)
@@ -714,6 +791,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun clearAiChat() {
         _aiMessages.value = emptyList()
         _aiState.value = AiState.Idle
+    }
+
+    fun updateAiInputText(text: String) {
+        _aiInputText.value = text
     }
 
     fun setPayday(day: Int) {
@@ -857,7 +938,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun applyUserBankStructure() {
         viewModelScope.launch {
             val db = AppDatabase.getDatabase(getApplication(), viewModelScope)
-            AppDatabase.prepopulateDatabase(db)
+            AppDatabase.applyUserBankStructure(db)
             _statusMessage.value = "Активирована структура ваших банков (ВТБ, Т-Банк, Озон, Альфа, Яндекс)"
         }
     }
@@ -938,5 +1019,58 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.deletePlannedTransaction(transaction)
         }
+    }
+
+
+    // --- Backup & Restore ---
+    fun exportBackupLocal(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                backupRepository.exportLocal(uri)
+                _statusMessage.value = "Локальный бэкап успешно сохранен"
+            } catch (e: Exception) {
+                _statusMessage.value = "Ошибка при экспорте: ${e.message}"
+            }
+        }
+    }
+
+    fun importBackupLocal(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                backupRepository.importLocal(uri)
+                _statusMessage.value = "Данные успешно восстановлены из файла"
+            } catch (e: Exception) {
+                _statusMessage.value = "Ошибка при импорте: ${e.message}"
+            }
+        }
+    }
+
+    fun exportBackupCloud(token: String) {
+        viewModelScope.launch {
+            try {
+                _statusMessage.value = "Сохраняем данные в Яндекс.Диск..."
+                backupRepository.exportCloud(token)
+                _statusMessage.value = "Бэкап успешно сохранен в Яндекс.Диск"
+            } catch (e: Exception) {
+                _statusMessage.value = "Ошибка облачного экспорта: ${e.message}"
+            }
+        }
+    }
+
+    fun importBackupCloud(token: String) {
+        viewModelScope.launch {
+            try {
+                _statusMessage.value = "Загружаем данные из Яндекс.Диска..."
+                backupRepository.importCloud(token)
+                _statusMessage.value = "Данные из облака успешно восстановлены"
+            } catch (e: Exception) {
+                _statusMessage.value = "Ошибка облачного импорта: ${e.message}"
+            }
+        }
+    }
+
+    fun completeFirstLaunch() {
+        userFinancePrefs.setFirstLaunchCompleted()
+        _isFirstLaunch.value = false
     }
 }

@@ -2,8 +2,10 @@ package com.example.data.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.squareup.moshi.JsonClass
 
 @Entity(tableName = "accounts")
+@JsonClass(generateAdapter = true)
 data class AccountEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -19,6 +21,7 @@ data class AccountEntity(
 )
 
 @Entity(tableName = "categories")
+@JsonClass(generateAdapter = true)
 data class CategoryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -29,6 +32,7 @@ data class CategoryEntity(
 )
 
 @Entity(tableName = "transactions")
+@JsonClass(generateAdapter = true)
 data class TransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val type: String, // EXPENSE, INCOME, TRANSFER
@@ -45,6 +49,7 @@ data class TransactionEntity(
 )
 
 @Entity(tableName = "budgets")
+@JsonClass(generateAdapter = true)
 data class BudgetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val categoryId: Long? = null, // null for total budget
@@ -53,6 +58,7 @@ data class BudgetEntity(
 )
 
 @Entity(tableName = "goals")
+@JsonClass(generateAdapter = true)
 data class GoalEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -64,6 +70,7 @@ data class GoalEntity(
 )
 
 @Entity(tableName = "debts")
+@JsonClass(generateAdapter = true)
 data class DebtEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val personName: String,
@@ -75,6 +82,7 @@ data class DebtEntity(
 )
 
 @Entity(tableName = "planned_transactions")
+@JsonClass(generateAdapter = true)
 data class PlannedTransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val type: String, // EXPENSE, INCOME, TRANSFER

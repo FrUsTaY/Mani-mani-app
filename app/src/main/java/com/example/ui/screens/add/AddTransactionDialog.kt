@@ -510,6 +510,40 @@ fun AddTransactionDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            item {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.clickable { onManageCategories() }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Settings,
+                                                contentDescription = "Управление",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Управление",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
                             items(filteredCategories) { cat ->
                                 val isSelected = cat.id == selectedCategoryId
                                 val catColor = IconHelper.parseColor(cat.colorHex)
@@ -592,40 +626,6 @@ fun AddTransactionDialog(
                                     }
                                 }
                             }
-                            item {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.clickable { onManageCategories() }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(28.dp)
-                                                .clip(CircleShape)
-                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Settings,
-                                                contentDescription = "Управление",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "Управление",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -639,6 +639,13 @@ fun AddTransactionDialog(
                     label = { Text("Заметка / комментарий (опционально)") },
                     placeholder = { Text("Например: покупка продуктов на неделю") },
                     singleLine = true,
+                    trailingIcon = {
+                        if (noteText.isNotEmpty()) {
+                            IconButton(onClick = { noteText = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp)
                 )
@@ -652,6 +659,13 @@ fun AddTransactionDialog(
                     label = { Text("Теги (через запятую)") },
                     placeholder = { Text("еда, семья, отпуск") },
                     singleLine = true,
+                    trailingIcon = {
+                        if (tagText.isNotEmpty()) {
+                            IconButton(onClick = { tagText = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp)
                 )

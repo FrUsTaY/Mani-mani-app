@@ -40,6 +40,7 @@ import com.example.ui.viewmodel.FinanceUiState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountsSettingsScreen(
+    viewModel: com.example.ui.viewmodel.FinanceViewModel,
     state: FinanceUiState,
     onAddAccountClick: () -> Unit,
     onManageCategories: () -> Unit = {},
@@ -48,7 +49,6 @@ fun AccountsSettingsScreen(
     onDeleteAccount: (AccountEntity) -> Unit,
     onCurrencyChange: (String) -> Unit,
     onClearAllData: (keepAccountStructure: Boolean) -> Unit = {},
-    onRestoreDemoData: () -> Unit = {},
     onTogglePushNotifications: (Boolean) -> Unit = {},
     onSendTestPush: () -> Unit = {},
     onOpenBankSync: () -> Unit,
@@ -66,6 +66,7 @@ fun AccountsSettingsScreen(
 ) {
     val context = LocalContext.current
     var showExportDialog by remember { mutableStateOf(false) }
+    var showApplyStructureDialog by remember { mutableStateOf(false) }
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var keepAccountsZeroBalance by remember { mutableStateOf(true) }
     var showApiKeyDialog by remember { mutableStateOf(false) }
@@ -397,7 +398,7 @@ fun AccountsSettingsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         OutlinedButton(
-                            onClick = onApplyUserBankStructure,
+                            onClick = { showApplyStructureDialog = true },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -563,9 +564,9 @@ fun AccountsSettingsScreen(
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.FileDownload, contentDescription = null)
+                    Icon(Icons.Default.Save, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Экспорт операций в CSV", fontWeight = FontWeight.SemiBold)
+                    Text("Экспорт/Импорт данных", fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -587,20 +588,6 @@ fun AccountsSettingsScreen(
                 }
                 
                 Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedButton(
-                    onClick = { 
-                        onRestoreDemoData() 
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Restore, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Восстановить демо-данные", fontWeight = FontWeight.SemiBold)
-                }
             }
 
             // 5. App Info Footer
@@ -626,18 +613,97 @@ fun AccountsSettingsScreen(
             }
         }
 
-    // CSV Export Dialog
-    if (showExportDialog) {
-        val csvContent = buildString {
-            append("ID;Дата;Тип;Сумма;Счёт;Категория;Заметка;Теги\n")
-            val accMap = state.accounts.associateBy { it.id }
-            val catMap = state.categories.associateBy { it.id }
-            state.transactions.forEach { tx ->
-                val dateStr = DateHelper.formatDate(tx.timestamp)
-                val accName = accMap[tx.accountId]?.name ?: ""
-                val catName = tx.categoryId?.let { catMap[it]?.name } ?: ""
-                append("${tx.id};$dateStr;${tx.type};${tx.amount};$accName;$catName;${tx.note};${tx.tag}\n")
+
+
+    // Apply Structure Confirmation Dialog
+    if (showApplyStructureDialog) {
+        AlertDialog(
+            onDismissRequest = { showApplyStructureDialog = false },
+            title = { Text("Применить структуру счетов?") },
+            text = { Text("ВНИМАНИЕ! Эта операция очистит текущую базу данных и применит вашу персонализированную структуру счетов (ВТБ, Т-Банк, Озон, Альфа, Яндекс). Все текущие транзакции будут удалены. Продолжить?") },
+            confirmButton = {
+                Button(onClick = {
+                    onApplyUserBankStructure()
+                    showApplyStructureDialog = false
+                }) {
+                    Text("Да, применить")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showApplyStructureDialog = false }) {
+                    Text("Отмена")
+                }
             }
+        )
+    }
+
+    if (showExportDialog) {
+        var showConfirmDialog by remember { mutableStateOf(false) }
+        var isImportMode by remember { mutableStateOf(false) }
+        var isCloudMode by remember { mutableStateOf(false) }
+        var cloudToken by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(viewModel.userFinancePrefs.getYandexToken())) }
+
+        val exportLocalLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+        ) { uri ->
+            if (uri != null) {
+                viewModel.exportBackupLocal(uri)
+            }
+            showExportDialog = false
+        }
+
+        val importLocalLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            if (uri != null) {
+                viewModel.importBackupLocal(uri)
+            }
+            showExportDialog = false
+            showConfirmDialog = false
+        }
+
+        if (showConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showConfirmDialog = false },
+                title = { Text(if (isImportMode) "Подтверждение импорта" else "Подтверждение экспорта") },
+                text = {
+                    if (isImportMode) {
+                        Text("ВНИМАНИЕ! Текущие данные будут ПОЛНОСТЬЮ перезаписаны данными из бэкапа. Продолжить?")
+                    } else {
+                        Text(if (isCloudMode) "Текущий облачный бэкап в Яндекс.Диске будет перезаписан. Продолжить?" else "Сохранить данные локально?")
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        if (isImportMode) {
+                            if (isCloudMode) {
+                                viewModel.userFinancePrefs.setYandexToken(cloudToken.text.trim())
+                                viewModel.importBackupCloud(cloudToken.text.trim())
+                                showExportDialog = false
+                            } else {
+                                importLocalLauncher.launch(arrayOf("application/json", "*/*"))
+                            }
+                        } else {
+                            if (isCloudMode) {
+                                viewModel.userFinancePrefs.setYandexToken(cloudToken.text.trim())
+                                viewModel.exportBackupCloud(cloudToken.text.trim())
+                                showExportDialog = false
+                            } else {
+                                val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.getDefault()).format(java.util.Date())
+                                exportLocalLauncher.launch("manimani_backup_$timestamp.json")
+                            }
+                        }
+                        showConfirmDialog = false
+                    }) {
+                        Text("Да")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showConfirmDialog = false }) {
+                        Text("Отмена")
+                    }
+                }
+            )
         }
 
         Dialog(onDismissRequest = { showExportDialog = false }) {
@@ -647,41 +713,72 @@ fun AccountsSettingsScreen(
                 modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("Экспорт операций (CSV)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Экспорт / Импорт", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text("Сформировано ${state.transactions.size} записей. Вы можете скопировать данные в буфер обмена.", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().height(160.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            text = csvContent.take(500) + if (csvContent.length > 500) "..." else "",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-
+                    Text("Вы можете сохранить или восстановить все ваши данные, включая счета, операции, долги, копилки и настройки.", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { showExportDialog = false }, modifier = Modifier.weight(1f)) {
-                            Text("Закрыть")
+                    Text("Локально", fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { 
+                            isImportMode = false
+                            isCloudMode = false
+                            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.getDefault()).format(java.util.Date())
+                            exportLocalLauncher.launch("manimani_backup_$timestamp.json")
+                        }, modifier = Modifier.weight(1f)) {
+                            Text("Экспорт")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                isImportMode = true
+                                isCloudMode = false
+                                showConfirmDialog = true
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Импорт")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Text("Яндекс.Диск", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = cloudToken,
+                        onValueChange = { cloudToken = it },
+                        label = { Text("API токен Яндекс.Диска") },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        singleLine = true
+                    )
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { 
+                            if (cloudToken.text.isNotBlank()) {
+                                isImportMode = false
+                                isCloudMode = true
+                                showConfirmDialog = true
+                            }
+                        }, modifier = Modifier.weight(1f)) {
+                            Text("В облако")
                         }
                         Button(
                             onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("ManiMani CSV", csvContent)
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "CSV скопирован в буфер обмена", Toast.LENGTH_SHORT).show()
-                                showExportDialog = false
+                                if (cloudToken.text.isNotBlank()) {
+                                    isImportMode = true
+                                    isCloudMode = true
+                                    showConfirmDialog = true
+                                }
                             },
-                            modifier = Modifier.weight(1.3f)
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text("Скопировать")
+                            Text("Из облака")
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(onClick = { showExportDialog = false }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Закрыть")
                     }
                 }
             }

@@ -97,19 +97,9 @@ abstract class AppDatabase : RoomDatabase() {
 
         suspend fun prepopulateDatabase(database: AppDatabase) {
             val categoryDao = database.categoryDao()
-            val accountDao = database.accountDao()
-            val transactionDao = database.transactionDao()
-            val budgetDao = database.budgetDao()
-            val goalDao = database.goalDao()
-            val debtDao = database.debtDao()
 
-            // Clear old data when prepopulating
-            accountDao.deleteAllAccounts()
+            // Clear old categories when prepopulating
             categoryDao.deleteAllCategories()
-            transactionDao.deleteAllTransactions()
-            budgetDao.deleteAllBudgets()
-            goalDao.deleteAllGoals()
-            debtDao.deleteAllDebts()
 
             // Predefined expense categories
             val expenseCategories = listOf(
@@ -129,16 +119,43 @@ abstract class AppDatabase : RoomDatabase() {
             // Predefined income categories
             val incomeCategories = listOf(
                 CategoryEntity(name = "Зарплата", type = "INCOME", iconName = "payments", colorHex = "#10B981", orderIndex = 1),
-                CategoryEntity(name = "Зарплата жены (наличные)", type = "INCOME", iconName = "account_balance_wallet", colorHex = "#EAB308", orderIndex = 2),
-                CategoryEntity(name = "Аванс", type = "INCOME", iconName = "payments", colorHex = "#34D399", orderIndex = 3),
-                CategoryEntity(name = "Фриланс / Проекты", type = "INCOME", iconName = "laptop", colorHex = "#3B82F6", orderIndex = 4),
-                CategoryEntity(name = "Кэшбэк и проценты", type = "INCOME", iconName = "trending_up", colorHex = "#F59E0B", orderIndex = 5),
-                CategoryEntity(name = "Подарки", type = "INCOME", iconName = "redeem", colorHex = "#EC4899", orderIndex = 6),
-                CategoryEntity(name = "Другое (доход)", type = "INCOME", iconName = "more_horiz", colorHex = "#64748B", orderIndex = 7)
+                CategoryEntity(name = "Аванс", type = "INCOME", iconName = "payments", colorHex = "#34D399", orderIndex = 2),
+                CategoryEntity(name = "Фриланс / Проекты", type = "INCOME", iconName = "laptop", colorHex = "#3B82F6", orderIndex = 3),
+                CategoryEntity(name = "Кэшбэк и проценты", type = "INCOME", iconName = "trending_up", colorHex = "#F59E0B", orderIndex = 4),
+                CategoryEntity(name = "Подарки", type = "INCOME", iconName = "redeem", colorHex = "#EC4899", orderIndex = 5),
+                CategoryEntity(name = "Другое (доход)", type = "INCOME", iconName = "more_horiz", colorHex = "#64748B", orderIndex = 6)
             )
 
-            val expenseIds = categoryDao.insertCategories(expenseCategories)
-            val incomeIds = categoryDao.insertCategories(incomeCategories)
+            categoryDao.insertCategories(expenseCategories)
+            categoryDao.insertCategories(incomeCategories)
+        }
+
+        suspend fun applyUserBankStructure(database: AppDatabase) {
+            val categoryDao = database.categoryDao()
+            val accountDao = database.accountDao()
+            val transactionDao = database.transactionDao()
+            val budgetDao = database.budgetDao()
+            val goalDao = database.goalDao()
+            val debtDao = database.debtDao()
+
+            // Clear old data
+            accountDao.deleteAllAccounts()
+            transactionDao.deleteAllTransactions()
+            budgetDao.deleteAllBudgets()
+            goalDao.deleteAllGoals()
+            debtDao.deleteAllDebts()
+
+            // Ensure categories exist
+            val categories = categoryDao.getAllCategoriesSync()
+            var expenseIds = categories.filter { it.type == "EXPENSE" }.sortedBy { it.orderIndex }.map { it.id }
+            var incomeIds = categories.filter { it.type == "INCOME" }.sortedBy { it.orderIndex }.map { it.id }
+
+            if (expenseIds.isEmpty() || incomeIds.isEmpty()) {
+                prepopulateDatabase(database)
+                val newCategories = categoryDao.getAllCategoriesSync()
+                expenseIds = newCategories.filter { it.type == "EXPENSE" }.sortedBy { it.orderIndex }.map { it.id }
+                incomeIds = newCategories.filter { it.type == "INCOME" }.sortedBy { it.orderIndex }.map { it.id }
+            }
 
             // Predefined accounts matching user's multi-bank workflow:
             // 1. VTB Salary
@@ -224,30 +241,34 @@ abstract class AppDatabase : RoomDatabase() {
             val oneDay = 86400000L
 
             // Husband's salary on VTB
-            transactionDao.insertTransaction(
-                TransactionEntity(
-                    type = "INCOME",
-                    amount = 95000.0,
-                    accountId = vtbSalaryId,
-                    categoryId = incomeIds[0], // Зарплата
-                    timestamp = now - 2 * oneDay,
-                    note = "Зарплата на ВТБ за предыдущий месяц",
-                    tag = "работа,втб"
+            if (incomeIds.isNotEmpty()) {
+                transactionDao.insertTransaction(
+                    TransactionEntity(
+                        type = "INCOME",
+                        amount = 95000.0,
+                        accountId = vtbSalaryId,
+                        categoryId = incomeIds[0], // Зарплата
+                        timestamp = now - 2 * oneDay,
+                        note = "Зарплата на ВТБ за предыдущий месяц",
+                        tag = "работа,втб"
+                    )
                 )
-            )
-
-            // Wife's salary deposited in cash via ATM into T-Bank
-            transactionDao.insertTransaction(
-                TransactionEntity(
-                    type = "INCOME",
-                    amount = 65000.0,
-                    accountId = tbankId,
-                    categoryId = incomeIds[1], // Зарплата жены
-                    timestamp = now - 2 * oneDay + 3600000L,
-                    note = "Внесение наличными ЗП жены через банкомат",
-                    tag = "жена,наличные,тбанк"
-                )
-            )
+                
+                if (incomeIds.size > 1) {
+                    // Wife's salary deposited in cash via ATM into T-Bank
+                    transactionDao.insertTransaction(
+                        TransactionEntity(
+                            type = "INCOME",
+                            amount = 65000.0,
+                            accountId = tbankId,
+                            categoryId = incomeIds[1], // Зарплата жены
+                            timestamp = now - 2 * oneDay + 3600000L,
+                            note = "Внесение наличными ЗП жены через банкомат",
+                            tag = "жена,наличные,тбанк"
+                        )
+                    )
+                }
+            }
 
             // Me2Me Transfer: from T-Bank to VTB Groceries
             transactionDao.insertTransaction(
@@ -301,67 +322,75 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
 
-            // Expense: Pyaterochka on Alfa card only
-            transactionDao.insertTransaction(
-                TransactionEntity(
-                    type = "EXPENSE",
-                    amount = 2150.0,
-                    accountId = alfaId,
-                    categoryId = expenseIds[0], // Продукты
-                    timestamp = now - 18 * 3600000L,
-                    note = "Пятёрочка у дома (Апельсиновая карта)",
-                    tag = "пятёрочка,еда"
+            if (expenseIds.isNotEmpty()) {
+                // Expense: Pyaterochka on Alfa card only
+                transactionDao.insertTransaction(
+                    TransactionEntity(
+                        type = "EXPENSE",
+                        amount = 2150.0,
+                        accountId = alfaId,
+                        categoryId = expenseIds[0], // Продукты
+                        timestamp = now - 18 * 3600000L,
+                        note = "Пятёрочка у дома (Апельсиновая карта)",
+                        tag = "пятёрочка,еда"
+                    )
                 )
-            )
 
-            // Expense: VTB Groceries
-            transactionDao.insertTransaction(
-                TransactionEntity(
-                    type = "EXPENSE",
-                    amount = 3450.0,
-                    accountId = vtbGroceriesId,
-                    categoryId = expenseIds[0], // Продукты
-                    timestamp = now - 12 * 3600000L,
-                    note = "Супермаркет Перекрёсток",
-                    tag = "продукты,дом"
+                // Expense: VTB Groceries
+                transactionDao.insertTransaction(
+                    TransactionEntity(
+                        type = "EXPENSE",
+                        amount = 3450.0,
+                        accountId = vtbGroceriesId,
+                        categoryId = expenseIds[0], // Продукты
+                        timestamp = now - 12 * 3600000L,
+                        note = "Супермаркет Перекрёсток",
+                        tag = "продукты,дом"
+                    )
                 )
-            )
+                
+                if (expenseIds.size > 4) {
+                    // Expense: VTB Salary (non-grocery purchase)
+                    transactionDao.insertTransaction(
+                        TransactionEntity(
+                            type = "EXPENSE",
+                            amount = 4600.0,
+                            accountId = vtbSalaryId,
+                            categoryId = expenseIds[4], // Покупки и одежда
+                            timestamp = now - 5 * 3600000L,
+                            note = "Осенняя куртка и обувь",
+                            tag = "одежда,покупки"
+                        )
+                    )
+                }
 
-            // Expense: VTB Salary (non-grocery purchase)
-            transactionDao.insertTransaction(
-                TransactionEntity(
-                    type = "EXPENSE",
-                    amount = 4600.0,
-                    accountId = vtbSalaryId,
-                    categoryId = expenseIds[4], // Покупки и одежда
-                    timestamp = now - 5 * 3600000L,
-                    note = "Осенняя куртка и обувь",
-                    tag = "одежда,покупки"
+                // Initial monthly budgets
+                budgetDao.insertBudget(
+                    BudgetEntity(
+                        categoryId = expenseIds[0], // Продукты
+                        limitAmount = 35000.0,
+                        periodMonth = "DEFAULT"
+                    )
                 )
-            )
-
-            // Initial monthly budgets
-            budgetDao.insertBudget(
-                BudgetEntity(
-                    categoryId = expenseIds[0], // Продукты
-                    limitAmount = 35000.0,
-                    periodMonth = "DEFAULT"
-                )
-            )
-            budgetDao.insertBudget(
-                BudgetEntity(
-                    categoryId = expenseIds[1], // Кафе
-                    limitAmount = 15000.0,
-                    periodMonth = "DEFAULT"
-                )
-            )
-            budgetDao.insertBudget(
-                BudgetEntity(
-                    categoryId = expenseIds[2], // Транспорт
-                    limitAmount = 10000.0,
-                    periodMonth = "DEFAULT"
-                )
-            )
+                if (expenseIds.size > 1) {
+                    budgetDao.insertBudget(
+                        BudgetEntity(
+                            categoryId = expenseIds[1], // Кафе
+                            limitAmount = 15000.0,
+                            periodMonth = "DEFAULT"
+                        )
+                    )
+                }
+                if (expenseIds.size > 2) {
+                    budgetDao.insertBudget(
+                        BudgetEntity(
+                            categoryId = expenseIds[2], // Транспорт
+                            limitAmount = 10000.0,
+                            periodMonth = "DEFAULT"
+                        )
+                    )
+                }
+            }
 
             // Initial goals
             goalDao.insertGoal(
@@ -403,5 +432,5 @@ abstract class AppDatabase : RoomDatabase() {
                 )
             )
         }
+        }
     }
-}

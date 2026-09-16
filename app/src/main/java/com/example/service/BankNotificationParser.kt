@@ -57,6 +57,68 @@ object BankNotificationParser {
      * - "Оплата 420 руб. Пятерочка"
      */
     fun parse(text: String, title: String? = null, packageName: String = ""): ParsedNotificationResult? {
+        val isZenmoney = packageName == "ru.zenmoney.androidsub" || packageName == "ru.zenmoney.android"
+        
+        if (isZenmoney && title != null) {
+            // Zenmoney format: "209,97 ₽, Продукты, Самбери" or "10 ₽, Семейные переводы, Алексей Андреевич С."
+            val parts = title.split(",").map { it.trim() }
+            if (parts.size >= 2) {
+                // Parse amount from parts[0]
+                val amountStr = parts[0].replace("[^0-9.,]".toRegex(), "").replace(",", ".")
+                val amount = amountStr.toDoubleOrNull() ?: 0.0
+                
+                if (amount > 0) {
+                    val categoryName = parts.getOrNull(1) ?: ""
+                    val merchant = parts.getOrNull(2) ?: categoryName.ifEmpty { "Операция Дзен-мани" }
+                    
+                    // Determine currency
+                    val currencyStr = parts[0].lowercase()
+                    val currency = when {
+                        currencyStr.contains("$") || currencyStr.contains("usd") -> "USD"
+                        currencyStr.contains("€") || currencyStr.contains("eur") -> "EUR"
+                        currencyStr.contains("₸") || currencyStr.contains("kzt") -> "KZT"
+                        currencyStr.contains("byn") -> "BYN"
+                        currencyStr.contains("cny") -> "CNY"
+                        else -> "RUB"
+                    }
+                    
+                    // Try to extract bank from text "ВТБ, Доступно:..."
+                    var bankName = "Дзен-мани"
+                    // Find text before "Доступно:"
+                    val textParts = text.split("Доступно:")
+                    if (textParts.size == 2) {
+                        val bankCandidate = textParts[0].split(".").lastOrNull()?.trim()
+                        if (bankCandidate != null && bankCandidate.isNotBlank()) {
+                            // "Полная статистика доступна по подписке. ВТБ,"
+                            val b = bankCandidate.trimEnd(',')
+                            if (b.isNotBlank() && b.length < 15) {
+                                bankName = b
+                            }
+                        }
+                    }
+
+                    // Guessing type (Zenmoney does not explicitly say income or expense in title usually, 
+                    // but we can assume expense unless category gives it away)
+                    var type = "EXPENSE"
+                    if (categoryName.lowercase().contains("доход") || categoryName.lowercase().contains("зарплата") || categoryName.lowercase().contains("пополнение")) {
+                        type = "INCOME"
+                    } else if (categoryName.lowercase().contains("перевод")) {
+                        type = "TRANSFER" // Or could be expense
+                    }
+
+                    return ParsedNotificationResult(
+                        bankName = bankName,
+                        type = type,
+                        amount = amount,
+                        currency = currency,
+                        merchant = merchant,
+                        cardLast4 = categoryName, // Hack to pass category name via cardLast4 since we don't have a note field in ParsedNotificationResult
+                        matchedCategoryKeyword = categoryName 
+                    )
+                }
+            }
+        }
+
         val raw = "${title ?: ""} $text".trim()
         if (raw.isBlank()) return null
 

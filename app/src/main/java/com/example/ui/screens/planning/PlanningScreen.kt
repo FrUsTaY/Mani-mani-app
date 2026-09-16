@@ -39,9 +39,11 @@ fun PlanningScreen(
     onAddBudget: (categoryId: Long?, limitAmount: Double) -> Unit,
     onDeleteBudget: (BudgetEntity) -> Unit,
     onAddGoal: (name: String, target: Double, current: Double, colorHex: String, iconName: String) -> Unit,
+    onEditGoal: (GoalEntity) -> Unit = {},
     onContributeGoal: (goalId: Long, amount: Double) -> Unit,
     onDeleteGoal: (GoalEntity) -> Unit,
     onAddDebt: (person: String, amount: Double, isOwedToMe: Boolean, note: String) -> Unit,
+    onEditDebt: (DebtEntity) -> Unit = {},
     onToggleDebt: (DebtEntity) -> Unit,
     onDeleteDebt: (DebtEntity) -> Unit,
     onAddPlannedTransaction: (com.example.data.entity.PlannedTransactionEntity) -> Unit = {},
@@ -57,8 +59,10 @@ fun PlanningScreen(
 
     var showAddBudgetDialog by remember { mutableStateOf(false) }
     var showAddGoalDialog by remember { mutableStateOf(false) }
+    var goalToEdit by remember { mutableStateOf<GoalEntity?>(null) }
     var showContributeGoalDialog by remember { mutableStateOf<GoalEntity?>(null) }
     var showAddDebtDialog by remember { mutableStateOf(false) }
+    var debtToEdit by remember { mutableStateOf<DebtEntity?>(null) }
 
     when (selectedTab) {
         0 -> {
@@ -224,6 +228,7 @@ fun PlanningScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 20.dp)
+                                        .clickable { goalToEdit = goal }
                                 ) {
                                     Column(modifier = Modifier.padding(16.dp)) {
                                         Row(
@@ -417,6 +422,7 @@ fun PlanningScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 20.dp)
+                                        .clickable { debtToEdit = debt }
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(14.dp),
@@ -538,6 +544,28 @@ fun PlanningScreen(
             onConfirm = { person, amount, isOwedToMe, note ->
                 onAddDebt(person, amount, isOwedToMe, note)
                 showAddDebtDialog = false
+            }
+        )
+    }
+
+    goalToEdit?.let { goal ->
+        EditGoalDialog(
+            goal = goal,
+            onDismiss = { goalToEdit = null },
+            onConfirm = { updated ->
+                onEditGoal(updated)
+                goalToEdit = null
+            }
+        )
+    }
+
+    debtToEdit?.let { debt ->
+        EditDebtDialog(
+            debt = debt,
+            onDismiss = { debtToEdit = null },
+            onConfirm = { updated ->
+                onEditDebt(updated)
+                debtToEdit = null
             }
         )
     }
@@ -701,340 +729,7 @@ private fun BudgetsTab(
     }
 }
 
-// ------------------- GOALS TAB -------------------
-@Composable
-private fun GoalsTab(
-    state: FinanceUiState,
-    onAddGoalClick: () -> Unit,
-    onContributeClick: (GoalEntity) -> Unit,
-    onDeleteGoal: (GoalEntity) -> Unit
-) {
-    LazyColumn(
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 96.dp, top = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.fillMaxSize().testTag("goals_list")
-    ) {
-        item {
-            Button(
-                onClick = onAddGoalClick,
-                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("add_goal_button"),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Новая цель накопления", fontWeight = FontWeight.Bold)
-            }
-        }
 
-        if (state.goals.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Flag,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "Копилок пока нет",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Создайте цель накопления на отпуск, ноутбук или автомобиль",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        } else {
-            items(state.goals, key = { it.id }) { goal ->
-                val progress = if (goal.targetAmount > 0) (goal.currentAmount / goal.targetAmount).toFloat().coerceIn(0f, 1f) else 0f
-                val percentInt = (progress * 100).toInt()
-                val goalColor = IconHelper.parseColor(goal.colorHex)
-
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(goalColor.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = IconHelper.getIconByName(goal.iconName),
-                                        contentDescription = null,
-                                        tint = goalColor,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = goal.name,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Собрано $percentInt%",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = IncomeGreen
-                                    )
-                                }
-                            }
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Button(
-                                    onClick = { onContributeClick(goal) },
-                                    modifier = Modifier.height(34.dp),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Внести", fontSize = 12.sp)
-                                }
-                                IconButton(
-                                    onClick = { onDeleteGoal(goal) },
-                                    modifier = Modifier.size(28.dp).padding(start = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Удалить цель",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(4.dp)),
-                            color = goalColor,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Накоплено: ${CurrencyHelper.formatAmount(goal.currentAmount, state.baseCurrency)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "Цель: ${CurrencyHelper.formatAmount(goal.targetAmount, state.baseCurrency)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ------------------- DEBTS TAB -------------------
-@Composable
-private fun DebtsTab(
-    state: FinanceUiState,
-    onAddDebtClick: () -> Unit,
-    onToggleDebt: (DebtEntity) -> Unit,
-    onDeleteDebt: (DebtEntity) -> Unit
-) {
-    LazyColumn(
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 96.dp, top = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.fillMaxSize().testTag("debts_list")
-    ) {
-        // Summary Header
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    color = IncomeGreen.copy(alpha = 0.12f)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Мне должны", style = MaterialTheme.typography.labelSmall, color = IncomeGreen)
-                        Text(
-                            CurrencyHelper.formatAmount(state.totalOwedToMe, state.baseCurrency),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = IncomeGreen
-                        )
-                    }
-                }
-
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    color = ExpenseRed.copy(alpha = 0.12f)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Я должен", style = MaterialTheme.typography.labelSmall, color = ExpenseRed)
-                        Text(
-                            CurrencyHelper.formatAmount(state.totalIOwe, state.baseCurrency),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ExpenseRed
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            Button(
-                onClick = onAddDebtClick,
-                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("add_debt_button"),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Добавить долг или займ", fontWeight = FontWeight.Bold)
-            }
-        }
-
-        if (state.debts.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Handshake,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "Долгов нет",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Учитывайте займы друзьям, коллегам или свои кредиты",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        } else {
-            items(state.debts, key = { it.id }) { debt ->
-                val badgeColor = if (debt.isOwedToMe) IncomeGreen else ExpenseRed
-
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (debt.isSettled) 0.2f else 0.4f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = debt.isSettled,
-                            onCheckedChange = { onToggleDebt(debt) }
-                        )
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = debt.personName,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = badgeColor.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = if (debt.isOwedToMe) "Мне должны" else "Я должен",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = badgeColor,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            if (debt.note.isNotBlank()) {
-                                Text(
-                                    text = debt.note,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (debt.isSettled) {
-                                Text(
-                                    text = "Долг закрыт ✓",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = IncomeGreen,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = CurrencyHelper.formatAmount(debt.amount, state.baseCurrency),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (debt.isSettled) MaterialTheme.colorScheme.onSurfaceVariant else badgeColor
-                        )
-
-                        IconButton(
-                            onClick = { onDeleteDebt(debt) },
-                            modifier = Modifier.size(28.dp).padding(start = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Удалить долг",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ------------------- POPUPS / DIALOGS -------------------
 
@@ -1368,6 +1063,173 @@ fun AddDebtDialog(
                                 return@Button
                             }
                             onConfirm(personName.trim(), amount, isOwedToMe, note.trim())
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Сохранить") }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun EditGoalDialog(
+    goal: com.example.data.entity.GoalEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (com.example.data.entity.GoalEntity) -> Unit
+) {
+    var name by remember { mutableStateOf(goal.name) }
+    var targetText by remember { mutableStateOf(goal.targetAmount.toString()) }
+    var currentText by remember { mutableStateOf(goal.currentAmount.toString()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("Редактировать копилку", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    label = { Text("Название") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = targetText,
+                    onValueChange = { targetText = it.replace(',', '.'); errorMessage = null },
+                    label = { Text("Целевая сумма") },
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = currentText,
+                    onValueChange = { currentText = it.replace(',', '.') },
+                    label = { Text("Уже накоплено") },
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (errorMessage != null) {
+                    Text(errorMessage ?: "", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Отмена") }
+                    Button(
+                        onClick = {
+                            if (name.isBlank()) {
+                                errorMessage = "Укажите название"
+                                return@Button
+                            }
+                            val target = targetText.toDoubleOrNull()
+                            if (target == null || target <= 0) {
+                                errorMessage = "Неверная сумма"
+                                return@Button
+                            }
+                            val current = currentText.toDoubleOrNull() ?: 0.0
+                            onConfirm(goal.copy(name = name.trim(), targetAmount = target, currentAmount = current))
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Сохранить") }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun EditDebtDialog(
+    debt: com.example.data.entity.DebtEntity,
+    onDismiss: () -> Unit,
+    onConfirm: (com.example.data.entity.DebtEntity) -> Unit
+) {
+    var personName by remember { mutableStateOf(debt.personName) }
+    var amountText by remember { mutableStateOf(debt.amount.toString()) }
+    var isOwedToMe by remember { mutableStateOf(debt.isOwedToMe) }
+    var note by remember { mutableStateOf(debt.note) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text("Редактировать долг", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = isOwedToMe, onClick = { isOwedToMe = true })
+                        Text("Мне должны", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = !isOwedToMe, onClick = { isOwedToMe = false })
+                        Text("Я должен", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = personName,
+                    onValueChange = { personName = it; errorMessage = null },
+                    label = { Text("Имя") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it.replace(',', '.'); errorMessage = null },
+                    label = { Text("Сумма") },
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (errorMessage != null) {
+                    Text(errorMessage ?: "", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Отмена") }
+                    Button(
+                        onClick = {
+                            if (personName.isBlank()) {
+                                errorMessage = "Укажите имя"
+                                return@Button
+                            }
+                            val amt = amountText.toDoubleOrNull()
+                            if (amt == null || amt <= 0) {
+                                errorMessage = "Неверная сумма"
+                                return@Button
+                            }
+                            onConfirm(debt.copy(personName = personName.trim(), amount = amt, isOwedToMe = isOwedToMe))
                         },
                         modifier = Modifier.weight(1f)
                     ) { Text("Сохранить") }

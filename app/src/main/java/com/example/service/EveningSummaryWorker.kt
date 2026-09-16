@@ -91,7 +91,7 @@ class EveningSummaryWorker(
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
             val builder = androidx.core.app.NotificationCompat.Builder(applicationContext, PushNotificationHelper.CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(com.example.R.drawable.ic_notification_mono)
                 .setContentTitle("🌙 Вечерняя сводка")
                 .setContentText(text)
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))

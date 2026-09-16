@@ -28,7 +28,9 @@ fun NotificationSettingsScreen(
     isEveningSummaryEnabled: Boolean,
     onToggleEveningSummary: (Boolean) -> Unit,
     eveningSummaryTime: String,
-    onSetEveningSummaryTime: (String) -> Unit
+    onSetEveningSummaryTime: (String) -> Unit,
+    onToggleBankIntercept: (Boolean) -> Unit,
+    onToggleZenmoneyIntercept: (Boolean) -> Unit
 ) {
     var showTimePickerDialog by remember { mutableStateOf(false) }
 
@@ -215,6 +217,76 @@ fun NotificationSettingsScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Отправить тестовое уведомление", fontSize = 13.sp)
                             }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Перехват от банковских приложений",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleSmall
+                                )
+                                Text(
+                                    text = "Сбер, Т-Банк, ВТБ, Альфа-Банк и др.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = state.isBankPushInterceptEnabled,
+                                onCheckedChange = onToggleBankIntercept
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Перехват от Дзен-мани",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleSmall
+                                )
+                                Text(
+                                    text = "Альтернативный способ для платных пушей",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = state.isZenmoneyPushInterceptEnabled,
+                                onCheckedChange = onToggleZenmoneyIntercept
+                            )
                         }
                     }
                 }

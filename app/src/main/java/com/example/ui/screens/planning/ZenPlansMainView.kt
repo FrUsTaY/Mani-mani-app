@@ -128,7 +128,9 @@ fun ZenPlansMainView(
     }
 
     val spentSoFar = remember(cycleTransactions, state.accounts, state.baseCurrency) {
-        cycleTransactions.filter { it.type == "EXPENSE" }.sumOf { tx ->
+        cycleTransactions.filter { 
+            it.type == "EXPENSE" || (it.type == "TRANSFER" && it.goalId != null) 
+        }.sumOf { tx ->
             val acc = state.accounts.find { it.id == tx.accountId }
             val inAnalytics = acc?.includeInAnalytics ?: true
             if (inAnalytics) {
@@ -154,8 +156,14 @@ fun ZenPlansMainView(
     // Spending per category in this cycle
     val spendingByCategory = remember(cycleTransactions, state.accounts, state.baseCurrency) {
         val map = mutableMapOf<Long, Double>()
-        cycleTransactions.filter { it.type == "EXPENSE" }.forEach { tx ->
-            val catId = tx.categoryId ?: -1L
+        cycleTransactions.filter { 
+            it.type == "EXPENSE" || (it.type == "TRANSFER" && it.goalId != null) 
+        }.forEach { tx ->
+            val catId = when {
+                tx.goalId != null -> -10000L - tx.goalId
+                tx.debtId != null -> -20000L - tx.debtId
+                else -> tx.categoryId ?: -1L
+            }
             val acc = state.accounts.find { it.id == tx.accountId }
             val inAnalytics = acc?.includeInAnalytics ?: true
             if (inAnalytics) {
@@ -683,7 +691,34 @@ fun ZenPlansMainView(
                                     Spacer(modifier = Modifier.height(6.dp))
 
                                     // Expense categories list
-                                    val expenseCategories = state.categories.filter { it.type == "EXPENSE" }
+                                    val expenseCategories = state.categories.filter { it.type == "EXPENSE" }.toMutableList()
+                                    
+                                    // Add Goals as pseudo-categories
+                                    state.goals.forEach { goal ->
+                                        expenseCategories.add(
+                                            CategoryEntity(
+                                                id = -10000L - goal.id,
+                                                name = "Копилка: ${goal.name}",
+                                                type = "EXPENSE",
+                                                iconName = goal.iconName,
+                                                colorHex = goal.colorHex
+                                            )
+                                        )
+                                    }
+                                    
+                                    // Add Debts as pseudo-categories
+                                    state.debts.forEach { debt ->
+                                        expenseCategories.add(
+                                            CategoryEntity(
+                                                id = -20000L - debt.id,
+                                                name = "Долг: ${debt.personName}",
+                                                type = "EXPENSE",
+                                                iconName = "account_balance",
+                                                colorHex = "#F44336" // Default red or neutral
+                                            )
+                                        )
+                                    }
+
                                     if (expenseCategories.isEmpty()) {
                                         Text(
                                             text = "Категории расходов пока не настроены",

@@ -31,13 +31,33 @@ class UserFinancePreferences(context: Context) {
         private const val KEY_LAST_DISTRIBUTION_AMOUNT = "last_distribution_amount"
         private const val KEY_PUSH_NOTIFICATIONS_ENABLED = "push_notifications_enabled"
         private const val KEY_THEME_MODE = "app_theme_mode"
+        private const val KEY_YANDEX_TOKEN = "yandex_disk_token"
+        private const val KEY_IS_FIRST_LAUNCH = "is_first_launch"
         const val KEY_EVENING_SUMMARY_ENABLED = "evening_summary_enabled"
         const val KEY_EVENING_SUMMARY_TIME = "evening_summary_time"
+        private const val KEY_BANK_PUSH_INTERCEPT_ENABLED = "bank_push_intercept_enabled"
+        private const val KEY_ZENMONEY_PUSH_INTERCEPT_ENABLED = "zenmoney_push_intercept_enabled"
 
         const val BANK_VTB = "VTB"
         const val BANK_YANDEX = "YANDEX"
     }
 
+    fun isFirstLaunch(): Boolean {
+        return prefs.getBoolean(KEY_IS_FIRST_LAUNCH, true)
+    }
+
+    fun setFirstLaunchCompleted() {
+        prefs.edit().putBoolean(KEY_IS_FIRST_LAUNCH, false).apply()
+    }
+    
+    fun getYandexToken(): String {
+        return prefs.getString(KEY_YANDEX_TOKEN, "") ?: ""
+    }
+
+    fun setYandexToken(token: String) {
+        prefs.edit().putString(KEY_YANDEX_TOKEN, token.trim()).apply()
+    }
+    
     fun getThemeMode(): AppThemeMode {
         val raw = prefs.getString(KEY_THEME_MODE, AppThemeMode.SYSTEM.name) ?: AppThemeMode.SYSTEM.name
         return try {
@@ -57,6 +77,22 @@ class UserFinancePreferences(context: Context) {
 
     fun setPushNotificationsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_PUSH_NOTIFICATIONS_ENABLED, enabled).apply()
+    }
+
+    fun isBankPushInterceptEnabled(): Boolean {
+        return prefs.getBoolean(KEY_BANK_PUSH_INTERCEPT_ENABLED, true)
+    }
+
+    fun setBankPushInterceptEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_BANK_PUSH_INTERCEPT_ENABLED, enabled).apply()
+    }
+
+    fun isZenmoneyPushInterceptEnabled(): Boolean {
+        return prefs.getBoolean(KEY_ZENMONEY_PUSH_INTERCEPT_ENABLED, false)
+    }
+
+    fun setZenmoneyPushInterceptEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ZENMONEY_PUSH_INTERCEPT_ENABLED, enabled).apply()
     }
 
     fun isEveningSummaryEnabled(): Boolean {

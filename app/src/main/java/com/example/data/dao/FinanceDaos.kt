@@ -15,6 +15,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts ORDER BY isArchived ASC, orderIndex ASC, id ASC")
     fun getAllAccounts(): Flow<List<AccountEntity>>
 
+    @Query("SELECT * FROM accounts ORDER BY isArchived ASC, orderIndex ASC, id ASC")
+    suspend fun getAllAccountsSync(): List<AccountEntity>
+
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getAccountById(id: Long): AccountEntity?
 
@@ -75,6 +78,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun getAllTransactions(): Flow<List<TransactionEntity>>
 
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
+    suspend fun getAllTransactionsSync(): List<TransactionEntity>
+
     @Query("SELECT * FROM transactions WHERE timestamp >= :startTime AND timestamp <= :endTime ORDER BY timestamp DESC")
     fun getTransactionsBetween(startTime: Long, endTime: Long): Flow<List<TransactionEntity>>
 
@@ -105,6 +111,9 @@ interface BudgetDao {
     @Query("SELECT * FROM budgets")
     fun getAllBudgets(): Flow<List<BudgetEntity>>
 
+    @Query("SELECT * FROM budgets")
+    suspend fun getAllBudgetsSync(): List<BudgetEntity>
+
     @Query("SELECT * FROM budgets WHERE periodMonth = :month OR periodMonth = 'DEFAULT'")
     fun getBudgetsForMonth(month: String): Flow<List<BudgetEntity>>
 
@@ -122,6 +131,9 @@ interface BudgetDao {
 interface GoalDao {
     @Query("SELECT * FROM goals ORDER BY id ASC")
     fun getAllGoals(): Flow<List<GoalEntity>>
+
+    @Query("SELECT * FROM goals ORDER BY id ASC")
+    suspend fun getAllGoalsSync(): List<GoalEntity>
 
     @Query("SELECT * FROM goals WHERE id = :id")
     suspend fun getGoalById(id: Long): GoalEntity?
@@ -144,6 +156,9 @@ interface DebtDao {
     @Query("SELECT * FROM debts ORDER BY isSettled ASC, id DESC")
     fun getAllDebts(): Flow<List<DebtEntity>>
 
+    @Query("SELECT * FROM debts ORDER BY isSettled ASC, id DESC")
+    suspend fun getAllDebtsSync(): List<DebtEntity>
+
     @Query("SELECT * FROM debts WHERE id = :id")
     suspend fun getDebtById(id: Long): DebtEntity?
 
@@ -164,6 +179,9 @@ interface DebtDao {
 interface PlannedTransactionDao {
     @Query("SELECT * FROM planned_transactions ORDER BY plannedDate ASC")
     fun getAllPlannedTransactions(): Flow<List<PlannedTransactionEntity>>
+
+    @Query("SELECT * FROM planned_transactions ORDER BY plannedDate ASC")
+    suspend fun getAllPlannedTransactionsSync(): List<PlannedTransactionEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlannedTransaction(transaction: PlannedTransactionEntity): Long

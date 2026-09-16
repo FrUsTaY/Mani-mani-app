@@ -46,6 +46,7 @@ fun GeminiAssistantScreen(
     onBack: () -> Unit,
     onAskGemini: (AiPromptType, String?) -> Unit,
     onClearChat: () -> Unit,
+    onUpdateInputText: (String) -> Unit,
     onSaveApiKey: (String) -> Unit,
     onTestApiKey: (String, (Boolean, String) -> Unit) -> Unit,
     modifier: Modifier = Modifier
@@ -54,7 +55,6 @@ fun GeminiAssistantScreen(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    var inputQuestion by remember { mutableStateOf("") }
     var showApiKeyDialog by remember { mutableStateOf(false) }
 
     // Auto-scroll to bottom on new message
@@ -65,6 +65,7 @@ fun GeminiAssistantScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -141,7 +142,6 @@ fun GeminiAssistantScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     Row(
@@ -149,8 +149,8 @@ fun GeminiAssistantScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedTextField(
-                            value = inputQuestion,
-                            onValueChange = { inputQuestion = it },
+                            value = state.aiInputText,
+                            onValueChange = { onUpdateInputText(it) },
                             placeholder = { Text("Задайте вопрос о финансах...") },
                             modifier = Modifier
                                 .weight(1f)
@@ -165,12 +165,12 @@ fun GeminiAssistantScreen(
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        val canSend = inputQuestion.isNotBlank() && state.aiState !is AiState.Loading
+                        val canSend = state.aiInputText.isNotBlank() && state.aiState !is AiState.Loading
                         IconButton(
                             onClick = {
                                 if (canSend) {
-                                    val question = inputQuestion.trim()
-                                    inputQuestion = ""
+                                    val question = state.aiInputText.trim()
+                                    onUpdateInputText("")
                                     onAskGemini(AiPromptType.CUSTOM, question)
                                 }
                             },
